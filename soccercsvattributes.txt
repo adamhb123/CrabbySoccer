@@ -1,0 +1,64 @@
+-- club
+club.name # Club
+
+-- player
+player.name # Name
+player.jersey_number # Jersey Number
+player_position # Position
+player.nationality # Nationality
+player.age # Age
+
+-- statistics
+statistics.appearances # Appearances
+statistics.wins # Wins
+statistics.losses # Losses
+statistics.goals # Goals
+statistics.goals_per_match # Goals per match
+statistics.headed_goals # Headed goals
+statistics.goals_right_foot # Goals with right foot
+statistics.goals_left_foot # Goals with left foot
+statistics.goals_from_penalties # Penalties scored
+statistics.goals_from_freekicks # Freekicks scored
+statistics.shots # Shots
+statistics.shots_on_target # Shots on target
+statistics.shooting_accuracy_pct # Shooting accuracy %
+statistics.hit_woodwork # Hit woodwork
+[EXCLUDED] ### Big chances missed
+statistics.clean_sheets* # Clean sheets
+statistics.goals_conceded*? # Goals conceded
+statistics.tackles # Tackles
+statistics.tackle_success_pct # Tackle success %
+[EXCLUDED] ### Last man tackles
+Blocked shots
+Interceptions
+Clearances
+Headed Clearance
+Clearances off line
+Recoveries
+Duels won
+Duels lost
+Successful 50/50s
+Aerial battles won
+Aerial battles lost
+Own goals
+Errors leading to goal
+Assists
+Passes
+Passes per match
+Big chances created
+Crosses
+Cross accuracy %
+Through balls
+Accurate long balls
+Saves
+Penalties saved
+Punches
+High Claims
+Catches
+Sweeper clearances
+Throw outs
+Goal Kicks
+Yellow cards
+Red cards
+Fouls
+Offsides
