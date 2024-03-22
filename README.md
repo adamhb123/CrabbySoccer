@@ -67,20 +67,20 @@ The csv is translated into the db schema as follows, by table:
 | Offsides              | statistics.offsides              |
 
 Exclusions:
-    * Big chances missed
-    * Last man tackles
-    * Clearances off line
-    * Recoveries
-    * Duels won
-    * Duels lost
-    * Successful 50/50s
-    * Aerial battles won
-    * Aerial battles lost
-    * Errors leading to goal
-    * Big chances created
-    * Through balls
-    * Accurate long balls
-    * Sweeper clearances
+* Big chances missed
+* Last man tackles
+* Clearances off line
+* Recoveries
+* Duels won
+* Duels lost
+* Successful 50/50s
+* Aerial battles won
+* Aerial battles lost
+* Errors leading to goal
+* Big chances created
+* Through balls
+* Accurate long balls
+* Sweeper clearances
     
 ## DB Schema
 
