@@ -146,23 +146,17 @@ The DB Schema is as follows, by table:
 <b>position</b>
 | attribute             | type         | constraints |
 |-----------------------|--------------|-------------|
-| id                    | INTEGER      | PRIMARY KEY |
-| name                  | VARCHAR(32)  | NOT NULL    |
+| player_id             | INTEGER      | PRIMARY KEY; FOREIGN KEY |
+| name                  | VARCHAR(32)  | PRIMARY KEY |
+* player_id and name are used in conjunction as the PRIMARY KEY of the position table
 * Note: Conventions for position 'name' are followed as per the borrowed database. I.e.:
     * Forward
     * Midfielder
     * Defender
     * Goalkeeper
 
-<b>player_position</b>
-| attribute             | type         | constraints |
-|-----------------------|--------------|-------------|
-| player_id             | INTEGER      | FOREIGN KEY |
-| position_id           | INTEGER      | FOREIGN KEY |
 
 * Note: player and position have a many-to-many relationship (i.e., many players can be assigned to many positions, many positions can be assigned to many players).
-    As a result, at least two tables are required. Three tables are used for clarity.
-      * The dataset used doesn't actually contain any such occurrence, but logically, it makes sense to do this.
-
+    As a result, at least two tables are required. 
 
 
