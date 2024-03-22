@@ -58,7 +58,7 @@ The csv is translated into the db schema as follows, by table:
 | Penalties saved       | statistics.penalties_saved       |
 | Punches               | statistics.punches               |
 | High Claims           | statistics.high_claims           |
-| Catches               | statistics.carches               |
+| Catches               | statistics.catches               |
 | Throw outs            | statistics.throw_outs            |
 | Goal Kicks            | statistics.goal_kicks            |
 | Yellow cards          | statistics.cards_yellow          |
@@ -135,7 +135,7 @@ The DB Schema is as follows, by table:
 | penalties_saved       | INTEGER      | NOT NULL    |
 | punches               | INTEGER      | NOT NULL    |
 | high_claims           | INTEGER      | NOT NULL    |
-| carches               | INTEGER      | NOT NULL    |
+| catches               | INTEGER      | NOT NULL    |
 | throw_outs            | INTEGER      | NOT NULL    |
 | goal_kicks            | INTEGER      | NOT NULL    |
 | cards_yellow          | INTEGER      | NOT NULL    |
