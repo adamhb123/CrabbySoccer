@@ -1,6 +1,7 @@
 mod client;
 mod server;
 mod requests;
+mod database;
 mod tests;
 
 use colored::*;
