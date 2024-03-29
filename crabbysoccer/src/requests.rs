@@ -1,15 +1,29 @@
+use std::collections::HashMap;
+use phf;
 use reqwest;
+use std::cmp;
 // ‘/get-player?player_id={player_id}&statistics={goals, assists, etc…}’:
 // ‘/get-all-players?name={name}’
 
-
-struct Endpoint<'a> {
-    uri: &'a str,
-    query_parameters: [&'a str]
+#[derive(std::fmt::Debug)]
+pub struct Endpoint {
+    uri: &'static str,
+    query_parameters: &'static [&'static str]
+}
+impl Endpoint {
+    const fn new(uri: &'static str, query_parameters: &'static [&'static str]) -> Self {
+        Self { uri, query_parameters }
+    }
+    pub fn get_valued_uri(&self, query_parameter_values: &'static [&'static str]) -> Result<String, &str> {
+        match query_parameter_values.len().cmp(&self.query_parameters.len()) {
+            cmp::Ordering::Less => Err("Too few query parameter values provided!"),
+            cmp::Ordering::Greater => Err("Too many query parameter values provided!"),
+            cmp::Ordering::Equal => Ok(format!("/{}?",&self.uri))
+        }
+    }
 }
 
-/*async fn send_request(ip: &str, port: u8) -> Result<String, _>{
-    let body: String = reqwest::get(format!("{}:{}",ip, port)).await?
-    .text().await?;
-    return Ok("");
-}*/
+pub const ENDPOINTS: [Endpoint; 2] = [
+    Endpoint::new("get-player", &["player_id", "statistics"]),
+    Endpoint::new("get-all-players", &["name"])
+];
