@@ -7,8 +7,8 @@ use std::cmp;
 
 #[derive(std::fmt::Debug)]
 pub struct Endpoint {
-    uri: &'static str,
-    query_parameters: &'static [&'static str]
+    pub uri: &'static str,
+    pub query_parameters: &'static [&'static str]
 }
 impl Endpoint {
     const fn new(uri: &'static str, query_parameters: &'static [&'static str]) -> Self {
