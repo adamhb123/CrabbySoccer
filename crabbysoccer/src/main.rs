@@ -38,6 +38,8 @@ fn main() {
     let utype = parse_args(std::env::args());
     println!("Running as: {}", utype);
     if utype == ApplicationType::Server {
-        server::run()
+        server::run();
+    } else if utype == ApplicationType::Client {
+        client::run();
     }
 }
