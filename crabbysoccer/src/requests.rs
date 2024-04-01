@@ -22,8 +22,11 @@ impl Endpoint {
         }
     }
 }
-
 pub const ENDPOINTS: [Endpoint; 2] = [
     Endpoint::new("get-player", &["player_id", "statistics"]),
     Endpoint::new("get-all-players", &["name"])
 ];
+
+pub fn endpoint_uri_exists(uri: &str) -> bool {
+    ENDPOINTS.map(|e| e.uri).contains(&uri)
+}

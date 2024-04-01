@@ -20,5 +20,5 @@ fn parse_csv() -> (String, Vec<String>){
 pub fn csv_to_sqlite(){
     let (header, data) = parse_csv();
     let connection = sqlite::open("soccer.db").unwrap();
-    connection.execute(queries::GENESIS_QUERIES::);
+    // connection.execute(queries::GENESIS_QUERIES::);
 }
