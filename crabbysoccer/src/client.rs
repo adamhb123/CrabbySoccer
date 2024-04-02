@@ -22,7 +22,7 @@ fn print_help(){
 fn parse_input(buf: &str) -> Result<String, &str> {
     let mut argsplit: Vec<&str> = buf.split(" ").collect();
     // Parse and verify endpoint
-    let endpoint = if let Some(e) = requests::find_endpoint_by_uri(argsplit.remove(0)) { e } else { return Err("No such Endpoint exists") };
+    let endpoint = if let Some(e) = requests::clone_authoritative_endpoint_by_uri(argsplit.remove(0)) { e } else { return Err("No such Endpoint exists") };
     let mut query_pv_map: HashMap<&str, Vec<&str>> = HashMap::new();
     // Parse and verify query parameters and associated values
     while !argsplit.is_empty() {
@@ -32,7 +32,7 @@ fn parse_input(buf: &str) -> Result<String, &str> {
         let param = query_kv_split.pop().unwrap();
         query_pv_map.insert(param, vals);
     }
-    Ok(endpoint.get_request_string(&query_pv_map))
+    Ok(endpoint.get_request_string())
 }
 
 pub fn run() {
