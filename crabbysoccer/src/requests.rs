@@ -1,7 +1,5 @@
-use std::{collections::HashMap, hash::Hash, io::Read};
-use phf;
-use reqwest;
-use std::cmp;
+use std::collections::HashMap;
+
 // ‘/get-player?player_id={player_id}&statistics={goals, assists, etc…}’:
 // ‘/get-all-players?name={name}’
 
@@ -62,13 +60,14 @@ impl From<Vec<String>> for Endpoint {
         let mut query_pv_map: QueryPVMap = HashMap::new();
         for qp_entry in query_params {
             let (p, vals) = qp_entry.split_once("=").unwrap();
-            let vals: Vec<String> = vals.split(",").map(|e| String::from(e)).collect();
+            let vals: Vec<String> = vals.split(",").map(String::from).collect();
             query_pv_map.insert(p.to_string(), vals);
         }
         Endpoint::new(endpoint, query_pv_map)
     }
 }
 
+#[allow(non_snake_case)]
 pub fn AUTHORITATIVE_ENDPOINTS() -> [Endpoint; 2] {
     [
         Endpoint::new_authority("get-player", &["player_id", "statistics"]),

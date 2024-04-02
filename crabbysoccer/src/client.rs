@@ -4,8 +4,9 @@ use std::io::{self, Write};
 use std::net::TcpStream;
 
 const SERVER_ADDR: &str = "127.0.0.1:7878";
-const INIT_ERROR_TIMEOUT_MS: u64 = 1000;
-const MAX_ERROR_TIMEOUT_MS: u128 = 5000;
+const CONNECT_INIT_ERROR_TIMEOUT_MS: u64 = 1000;
+const CONNECT_MAX_ERROR_TIMEOUT_MS: u128 = 5000;
+const CONNECT_MAX_TRIES: u8 = 10;
 
 const _HELP_MSG: &'static str = "
  ----------------------------------------------------------------------
@@ -47,22 +48,30 @@ fn parse_input(buf: &str) -> Result<String, &str> {
 
 fn try_connect() -> TcpStream {
     let sock: TcpStream;
-    let mut error_timeout: std::time::Duration = std::time::Duration::from_millis(INIT_ERROR_TIMEOUT_MS);
-
+    let mut error_timeout: std::time::Duration = std::time::Duration::from_millis(CONNECT_INIT_ERROR_TIMEOUT_MS);
+    let mut attempts: u8 = 0;
     loop {
         sock = match TcpStream::connect(SERVER_ADDR) {
             Ok(s) => {
-                println!("Connection established with ");
+                let peer_addr = match s.peer_addr() {
+                    Ok(addr) => addr.to_string(),
+                    Err(_) => "[ERROR] UNABLE TO RETREIVE SERVER ADDRESS".to_string()
+                };
+                println!("Connection established with {}", peer_addr);
                 s
             }
             Err(e) => {
+                attempts += 1;
                 println!("[ERROR] {}", e);
-                if error_timeout.as_millis() < MAX_ERROR_TIMEOUT_MS {
+                if error_timeout.as_millis() < CONNECT_MAX_ERROR_TIMEOUT_MS {
                     error_timeout = error_timeout.mul_f64(1.1);
                 }
-                if error_timeout.as_millis() > MAX_ERROR_TIMEOUT_MS { error_timeout = std::time::Duration::from_millis(5000); }
+                if error_timeout.as_millis() > CONNECT_MAX_ERROR_TIMEOUT_MS { error_timeout = std::time::Duration::from_millis(5000); }
                 println!("\t! Retrying in {} ms...", error_timeout.as_millis());
                 std::thread::sleep(error_timeout);
+                if attempts > CONNECT_MAX_TRIES {
+                    panic!("Exceeded max connection attempts ({})", CONNECT_MAX_TRIES);
+                }
                 continue;
             }
         };
@@ -72,17 +81,19 @@ fn try_connect() -> TcpStream {
 }
 
 fn _assertion_checks() {
-    assert!((INIT_ERROR_TIMEOUT_MS as u128) < MAX_ERROR_TIMEOUT_MS);
+    assert!((CONNECT_INIT_ERROR_TIMEOUT_MS as u128) < CONNECT_MAX_ERROR_TIMEOUT_MS);
 }
 
 pub fn run() {
     _assertion_checks();
-    print_help();
     let mut sock = try_connect();
+    print_help();
+    let mut buf: String = String::new();
     
     loop {
-        let mut buf: String = String::new();
+        buf.clear();
         print!("$ ");
+        io::stdout().flush().unwrap();
         io::stdin().read_line(&mut buf).unwrap();
         let buf = buf.trim();
         let request_string = match parse_input(&buf) {

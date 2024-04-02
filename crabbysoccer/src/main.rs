@@ -4,7 +4,6 @@ mod requests;
 mod database;
 mod tests;
 
-use colored::*;
 
 #[derive(PartialEq)]
 enum ApplicationType {
