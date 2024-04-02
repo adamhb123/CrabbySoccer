@@ -1,10 +1,13 @@
-use crate::requests::{self, Endpoint};
+use crate::requests;
 use std::collections::HashMap;
 use std::io::{self, Write};
-use std::net::{TcpStream};
-use std::vec;
+use std::net::TcpStream;
 
-const HELP_MSG: &'static str = "
+const SERVER_ADDR: &str = "127.0.0.1:7878";
+const INIT_ERROR_TIMEOUT_MS: u64 = 1000;
+const MAX_ERROR_TIMEOUT_MS: u128 = 5000;
+
+const _HELP_MSG: &'static str = "
  ----------------------------------------------------------------------
 | CrabbySoccer Client CLI                                              |
  ----------------------------------------------------------------------
@@ -13,21 +16,28 @@ const HELP_MSG: &'static str = "
     e.g.:
         $ get-all-players name=Joe\\ Smith
         $ get-player player_id=12345 statistics=goals,assists,shots,saves
-"; 
+";
 
-fn print_help(){
-    println!("{HELP_MSG}");
+fn print_help() {
+    println!("{_HELP_MSG}");
 }
 
 fn parse_input(buf: &str) -> Result<String, &str> {
     let mut argsplit: Vec<&str> = buf.split(" ").collect();
     // Parse and verify endpoint
-    let endpoint = if let Some(e) = requests::clone_authoritative_endpoint_by_uri(argsplit.remove(0)) { e } else { return Err("No such Endpoint exists") };
+    let endpoint =
+        if let Some(e) = requests::clone_authoritative_endpoint_by_uri(argsplit.remove(0)) {
+            e
+        } else {
+            return Err("No such Endpoint exists");
+        };
     let mut query_pv_map: HashMap<&str, Vec<&str>> = HashMap::new();
     // Parse and verify query parameters and associated values
     while !argsplit.is_empty() {
         let mut query_kv_split: Vec<&str> = argsplit.pop().unwrap().split("=").collect();
-        if query_kv_split.len() != 2 { return Err("Malformed input (couldn't parse query parameter-value pair)") }
+        if query_kv_split.len() != 2 {
+            return Err("Malformed input (couldn't parse query parameter-value pair)");
+        }
         let vals: Vec<&str> = query_kv_split.pop().unwrap().split(",").collect();
         let param = query_kv_split.pop().unwrap();
         query_pv_map.insert(param, vals);
@@ -35,11 +45,44 @@ fn parse_input(buf: &str) -> Result<String, &str> {
     Ok(endpoint.get_request_string())
 }
 
+fn try_connect() -> TcpStream {
+    let sock: TcpStream;
+    let mut error_timeout: std::time::Duration = std::time::Duration::from_millis(INIT_ERROR_TIMEOUT_MS);
+
+    loop {
+        sock = match TcpStream::connect(SERVER_ADDR) {
+            Ok(s) => {
+                println!("Connection established with ");
+                s
+            }
+            Err(e) => {
+                println!("[ERROR] {}", e);
+                if error_timeout.as_millis() < MAX_ERROR_TIMEOUT_MS {
+                    error_timeout = error_timeout.mul_f64(1.1);
+                }
+                if error_timeout.as_millis() > MAX_ERROR_TIMEOUT_MS { error_timeout = std::time::Duration::from_millis(5000); }
+                println!("\t! Retrying in {} ms...", error_timeout.as_millis());
+                std::thread::sleep(error_timeout);
+                continue;
+            }
+        };
+        break;
+    }
+    sock
+}
+
+fn _assertion_checks() {
+    assert!((INIT_ERROR_TIMEOUT_MS as u128) < MAX_ERROR_TIMEOUT_MS);
+}
+
 pub fn run() {
+    _assertion_checks();
     print_help();
-    let mut sock = TcpStream::connect("127.0.0.1:7878").unwrap();
+    let mut sock = try_connect();
+    
     loop {
         let mut buf: String = String::new();
+        print!("$ ");
         io::stdin().read_line(&mut buf).unwrap();
         let buf = buf.trim();
         let request_string = match parse_input(&buf) {

@@ -1,6 +1,6 @@
 mod queries;
 
-use std::{fs::read_to_string, path, env};
+use std::{fs::read_to_string, path::Path};
 use sqlite;
 
 fn read_lines(filename: &str) -> Vec<String> {
@@ -19,6 +19,12 @@ fn parse_csv() -> (String, Vec<String>){
 
 pub fn csv_to_sqlite(){
     let (header, data) = parse_csv();
+    let _path = Path::new("soccer.db");
+    
+    match std::fs::remove_file(_path) {
+        Ok(_) => { println!("Successfully deleted file: {}", _path.display()) },
+        Err(err) => println!("[ERROR] {}", err),
+    }
     let connection = sqlite::open("soccer.db").unwrap();
-    // connection.execute(queries::GENESIS_QUERIES::);
+    connection.execute("CREATE TABLE ");
 }

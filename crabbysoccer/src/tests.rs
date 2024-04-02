@@ -3,8 +3,8 @@ use crate::*;
 
 #[test]
 fn test_endpoints(){
-    println!("Endpoints: {:#?}", requests::ENDPOINTS);
-    println!("{:?}", requests::ENDPOINTS[0].query_parameters);
+    let auth_endpoints = requests::AUTHORITATIVE_ENDPOINTS();
+    println!("Authoritative Endpoints: {:#?}", auth_endpoints);
 }
 
 #[test]
