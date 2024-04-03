@@ -18,17 +18,23 @@ impl DB {
         player_id: Option<String>,
         statistics: Option<Vec<String>>,
     ) -> Result<(), sqlite::Error> {
-        let mut statistics = statistics.unwrap_or(vec![]);
-        statistics
-            .iter_mut()
-            .for_each(|e: &mut String| e.insert_str(0, "statistics."));
-        let statistics_string = if !statistics.is_empty() {
-            let mut statistics = statistics.join(",");
-            statistics.insert(0, ',');
-            statistics
-        } else {
-            "".to_string()
+        let statistics_string = match statistics {
+            Some(s) => {
+                let mut statistics = s;
+                if !statistics.is_empty() {
+                    statistics
+                        .iter_mut()
+                        .for_each(|e: &mut String| e.insert_str(0, "statistics."));
+                        let mut statistics = statistics.join(",");
+                        statistics.insert(0, ',');
+                        statistics
+                } else {
+                    "".to_string()
+                }
+            },
+            None => "".to_string()
         };
+        
         let where_pid_clause = match player_id {
             Some(id) => format!("WHERE player.id = {id}"),
             None => "".to_owned(),
@@ -46,6 +52,8 @@ fn read_lines(filename: &str) -> Vec<String> {
         .map(|e| e.trim().to_string())
         .collect() // gather them together into a vector
 }
+
+fn _get_ignored_columns() 
 
 fn parse_csv() -> (Vec<String>, Vec<Vec<String>>) {
     let mut lines: Vec<Vec<String>> = read_lines("soccer.csv")
@@ -68,34 +76,37 @@ fn parse_csv() -> (Vec<String>, Vec<Vec<String>>) {
         "Accurate long balls",
         "Sweeper clearances",
     ];
-    let csv_header = lines.remove(0);
-    let ignore_columns_indices: Vec<usize> = csv_header
+    let mut csv_header = lines.remove(0);
+    let ignore_columns_indices: Vec<(usize, String)> = csv_header
             .iter()
             .enumerate()
             .filter(|e| IGNORE_COLUMNS.contains(&e.1.as_str()))
-            .map(|e| e.0)
+            .map(|e| (e.0, e.1.to_owned()))
             .collect();
     println!("IGNORE COLUMNS INDICES: {:?}", ignore_columns_indices);
-    // lines.iter_mut().for_each(|line| ignore_columns_indices.iter().for_each(|idx| {line.remove(*idx);}));
-    for mut line in lines {
-        for idx in ignore_columns_indices {
-            line.remove(idx);
-        }
+    let mut csvh_offset = 0;
+    for (i,_) in &ignore_columns_indices {
+        csv_header.remove(*i - csvh_offset);
+        csvh_offset += 1;
     }
-
+    //csv_header.iter_mut().for_each(|line| {  ignore_columns_indices.iter().for_each(|idx| {line.remove((*idx) - csvh_offset); csvh_offset += 1;})});
+    lines.iter_mut().for_each(|line| { let mut offset = 0; ignore_columns_indices.iter().for_each(|(idx, _)| {line.remove((*idx) - offset); offset += 1;})});
     (csv_header, lines)
 }
 
 pub fn csv_to_sqlite() {
     let (header, data) = parse_csv();
+    println!("HEADER: {:#?}\nDATA HEAD: {:#?}", header, data[0]);
     let _path = Path::new("soccer.db");
 
     match std::fs::remove_file(_path) {
         Ok(_) => {
             println!("Successfully deleted file: {}", _path.display())
         }
-        Err(err) => println!("[ERROR] {}", err),
+        Err(_) => (),
     }
+    println!("Building database...");
+
     let connection = sqlite::open("soccer.db").unwrap();
     connection.execute("CREATE TABLE ");
 }
