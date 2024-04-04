@@ -114,5 +114,5 @@ pub fn csv_to_sqlite() {
     println!("Building database...");
 
     let connection = sqlite::open("soccer.db").unwrap();
-    connection.execute("CREATE TABLE player ");
+    connection.execute("CREATE TABLE player "); 
 }

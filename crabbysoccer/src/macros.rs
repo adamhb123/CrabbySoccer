@@ -23,8 +23,8 @@ impl<'a> StatefulFormat<'a> {
     pub fn get(&self) -> String {
         let mut idx = 0;
         todo!();
-        let formatted: Option<String> = self.format_str.split("{}").reduce(|a,b| format!("{}{}{}", a, &self.values[idx], b)).map(String::from);
-        formatted.unwrap()
+        //let formatted: Option<String> = self.format_str.split("{}").reduce(|a,b| format!("{}{}{}", a, &self.values[idx], b)).map(String::from);
+        //formatted.unwrap()
     }
     pub fn insert(&mut self, index: usize, element: &'a str){
         self.values.insert(index, element)
@@ -38,11 +38,11 @@ impl std::fmt::Display for StatefulFormat<'_> {
         f.write_str(self.get().as_str())
     }
 }
-
 #[macro_export]
 macro_rules! stateful_format {
     ($($arg:tt)*) => {{
         let res = $crate::fmt::format($crate::__export::format_args!($($arg)*));
-        StatefulFormat {  }
+        StatefulFormat { , vec![$($arg:tt)+] }
     }}
 }
+
