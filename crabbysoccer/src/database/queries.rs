@@ -1,32 +1,54 @@
-use std::fmt::Arguments;
+use itertools::Itertools;
 
-pub trait QueryEnum {
-    fn get_values() -> Vec<&'static str>;
+use crate::common::format_vec;
+
+pub trait AsStr {
     fn as_str(&self) -> &'static str;
-    fn 
 }
-
 pub enum TablePlayerAttributes {
     ID,
     Name,
     JerseyNumber,
-    ClubName
+    ClubName,
+    Nationality,
+    Age,
 }
-type _TPA = TablePlayerAttributes; // alias
-
-impl QueryEnum for TablePlayerAttributes {
-    fn get_values() -> Vec<&'static str> {
-        vec![_TPA::ID, _TPA::Name, _TPA::JerseyNumber, _TPA::ClubName].iter().map(_TPA::as_str).collect()
-    }
+impl AsStr for TablePlayerAttributes {
     fn as_str(&self) -> &'static str {
         match &self {
-            _TPA::ID => "id",
-            _TPA::Name => "name",
-            _TPA::JerseyNumber => "jersey_number",
-            _TPA::ClubName => "club_name",
+            TablePlayerAttributes::ID => "id",
+            TablePlayerAttributes::Name => "name",
+            TablePlayerAttributes::JerseyNumber => "jersey_number",
+            TablePlayerAttributes::ClubName => "club_name",
+            TablePlayerAttributes::Nationality => "nationality",
+            TablePlayerAttributes::Age => "age",
         }
     }
 }
+type _TPA = TablePlayerAttributes; // alias
+const _TPA_VALUES: [_TPA; 6] = [
+    _TPA::ID,
+    _TPA::Name,
+    _TPA::JerseyNumber,
+    _TPA::ClubName,
+    _TPA::Nationality,
+    _TPA::Age,
+];
 
-pub const CREATE_TABLE_PLAYER: String = format!("CREATE TABLE player (
-{} INTEGER PRIMARY KEY AUTO_INCREMENT, {} VARCHAR(128) NOT NULL, {} INTEGER NOT NULL, {})", _TPA::get_values());
+pub enum PredefinedQuery {
+    CreateTablePlayer,
+    CreateTableStatistics,
+    CreateTablePosition,
+}
+
+pub fn get_predefined_query(query: PredefinedQuery) -> String {
+    match query {
+        PredefinedQuery::CreateTablePlayer => format_vec(
+            "CREATE TABLE player (
+            {} INTEGER PRIMARY KEY AUTO_INCREMENT, {} VARCHAR(128) NOT NULL, {} INTEGER NOT NULL, {} VARCHAR(128), {} VARCHAR(64) NOT NULL, {} INTEGER NOT NULL)",
+            &_TPA_VALUES.iter().map(|e| e.as_str()).collect(),
+        ),
+        PredefinedQuery::CreateTableStatistics => todo!(),
+        PredefinedQuery::CreateTablePosition => todo!(),
+    }
+}

@@ -2,7 +2,7 @@ mod client;
 mod server;
 mod requests;
 mod database;
-mod macros;
+mod common;
 mod tests;
 
 

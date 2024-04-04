@@ -3,7 +3,7 @@ use crate::{
     requests::{self, Endpoint, QueryPVMap},
 };
 use std::{
-    collections::HashMap, io::{BufRead, BufReader}, net::{TcpListener, TcpStream}, os::linux::raw::stat, thread::{self, JoinHandle}
+    collections::HashMap, io::{BufRead, BufReader}, net::{TcpListener, TcpStream}, thread::{self, JoinHandle}
 };
 
 fn parse_request(request: Vec<String>) -> Endpoint {
