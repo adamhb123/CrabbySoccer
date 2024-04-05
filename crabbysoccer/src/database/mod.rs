@@ -111,8 +111,10 @@ pub fn csv_to_sqlite() {
         }
         Err(_) => (),
     }
-    println!("Building database...");
-
     let connection = sqlite::open("soccer.db").unwrap();
-    connection.execute("CREATE TABLE player "); 
+    println!("Initializing database with tables...");
+    connection.execute(queries::get_predefined_query(queries::PredefinedQuery::CreateTablePlayer)).unwrap(); 
+    connection.execute(queries::get_predefined_query(queries::PredefinedQuery::CreateTableStatistics)).unwrap(); 
+    connection.execute(queries::get_predefined_query(queries::PredefinedQuery::CreateTablePosition)).unwrap();
+    
 }
