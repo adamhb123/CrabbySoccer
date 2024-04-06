@@ -3,6 +3,8 @@ mod queries;
 use sqlite;
 use std::{fmt::Display, fs::read_to_string, path::Path, str::FromStr};
 
+use crate::database::queries::{PredefinedQuery, PredefinedQueryTrait};
+
 const JOIN_ALL: &str =
     "player JOIN statistics ON player.id = statistics.player_id JOIN position ON player.id = position.player_id";
 pub struct DB {
@@ -113,8 +115,8 @@ pub fn csv_to_sqlite() {
     }
     let connection = sqlite::open("soccer.db").unwrap();
     println!("Initializing database with tables...");
-    connection.execute(queries::get_predefined_query(queries::PredefinedQuery::CreateTablePlayer)).unwrap(); 
-    connection.execute(queries::get_predefined_query(queries::PredefinedQuery::CreateTableStatistics)).unwrap(); 
-    connection.execute(queries::get_predefined_query(queries::PredefinedQuery::CreateTablePosition)).unwrap();
-    
+    println!("Query Strings: {}", PredefinedQuery::get_all_strings().join("\n"));
+    connection.execute(PredefinedQuery::get_string(PredefinedQuery::CreateTablePlayer)).unwrap(); 
+    connection.execute(PredefinedQuery::get_string(PredefinedQuery::CreateTableStatistics)).unwrap(); 
+    connection.execute(PredefinedQuery::get_string(PredefinedQuery::CreateTablePosition)).unwrap();
 }

@@ -1,6 +1,8 @@
+use std::fmt::Display;
+
 use crate::common::format_vec;
 use itertools::Itertools;
-use strum::{EnumIter, IntoEnumIterator};
+use strum::{Display, EnumIter, IntoEnumIterator};
 
 pub trait TableAttributes: IntoEnumIterator {
     fn as_str(&self) -> &'static str;
@@ -137,76 +139,93 @@ impl TableAttributes for TablePositionAttributes {
     }
 }
 
+pub trait PredefinedQueryTrait {
+    fn get_string(query: PredefinedQuery) -> String;
+    fn get_all_strings() -> Vec<String>;
+}
+#[derive(EnumIter)]
 pub enum PredefinedQuery {
     CreateTablePlayer,
     CreateTableStatistics,
     CreateTablePosition,
 }
+impl PredefinedQueryTrait for PredefinedQuery {
+    fn get_string(query: PredefinedQuery) -> String {
+        let mut _tpa_args: Vec<&str> = _TPA::iter().map(|e| e.as_str()).collect();
+        let mut _tsa_args: Vec<&str> = _TSA::iter().map(|e| e.as_str()).collect();
+        let mut _tposa_args: Vec<&str> = _TPA::iter().map(|e| e.as_str()).collect::<Vec<&str>>();
+        // Add inter-table relation arguments
+        _tposa_args.push(_tpa_args[0]);
 
-pub fn get_predefined_query(query: PredefinedQuery) -> String {
-    match query {
-        PredefinedQuery::CreateTablePlayer => format_vec(
-            "CREATE TABLE player (
-            {} INTEGER PRIMARY KEY AUTO_INCREMENT,
-            {} VARCHAR(128) NOT NULL,
-            {} INTEGER NOT NULL,
-            {} VARCHAR(128),
-            {} VARCHAR(64) NOT NULL,
-            {} INTEGER NOT NULL);",
-            &_TPA::iter().map(|e| e.as_str()).collect(),
-        ),
-        PredefinedQuery::CreateTableStatistics => format_vec(
-            "CREATE TABLE statistics (
-                {} INTEGER PRIMARY KEY AUTO_INCREMENT,
-                {} INTEGER FOREIGN KEY,
+        match query {
+            PredefinedQuery::CreateTablePlayer => format_vec(
+                "CREATE TABLE player (
+                {} INTEGER PRIMARY KEY AUTOINCREMENT,
+                {} VARCHAR(128) NOT NULL,
                 {} INTEGER NOT NULL,
-                {} INTEGER NOT NULL,
-                {} INTEGER NOT NULL,
-                {} INTEGER NOT NULL,
-                {} INTEGER NOT NULL,
-                {} INTEGER NOT NULL,
-                {} INTEGER NOT NULL,
-                {} INTEGER NOT NULL,
-                {} INTEGER NOT NULL,
-                {} INTEGER NOT NULL,
-                {} INTEGER NOT NULL,
-                {} INTEGER NOT NULL,
-                {} DECIMAL(5,4) NOT NULL,
-                {} INTEGER NOT NULL,
-                {} INTEGER NOT NULL,
-                {} INTEGER NOT NULL,
-                {} INTEGER NOT NULL,
-                {} DECIMAL(5,4) NOT NULL,
-                {} INTEGER NOT NULL,
-                {} INTEGER NOT NULL,
-                {} INTEGER NOT NULL,
-                {} INTEGER NOT NULL,
-                {} INTEGER NOT NULL,
-                {} INTEGER NOT NULL,
-                {} INTEGER NOT NULL,
-                {} INTEGER NOT NULL,
-                {} DECIMAL(5,4) NOT NULL,
-                {} INTEGER NOT NULL,
-                {} INTEGER NOT NULL,
-                {} INTEGER NOT NULL,
-                {} INTEGER NOT NULL,
-                {} INTEGER NOT NULL,
-                {} INTEGER NOT NULL,
-                {} INTEGER NOT NULL,
-                {} INTEGER NOT NULL,
-                {} INTEGER NOT NULL,
-                {} INTEGER NOT NULL,
-                {} INTEGER NOT NULL,
-                {} INTEGER NOT NULL
-            );",
-            &_TSA::iter().map(|e| e.as_str()).collect(),
-        ),
-        PredefinedQuery::CreateTablePosition => format_vec(
-            "CREATE TABLE position (
-                {} INTEGER FOREIGN KEY
-                {} VARCHAR(10) FOREIGN KEY
-            );",
-            &_TPOSA::iter().map(|e| e.as_str()).collect(),
-        ),
+                {} VARCHAR(128),
+                {} VARCHAR(64) NOT NULL,
+                {} INTEGER NOT NULL);",
+                &_tpa_args,
+            ),
+            PredefinedQuery::CreateTableStatistics => format_vec(
+                "CREATE TABLE statistics (
+                    {} INTEGER PRIMARY KEY AUTOINCREMENT,
+                    {} INTEGER,
+                    {} INTEGER NOT NULL,
+                    {} INTEGER NOT NULL,
+                    {} INTEGER NOT NULL,
+                    {} INTEGER NOT NULL,
+                    {} INTEGER NOT NULL,
+                    {} INTEGER NOT NULL,
+                    {} INTEGER NOT NULL,
+                    {} INTEGER NOT NULL,
+                    {} INTEGER NOT NULL,
+                    {} INTEGER NOT NULL,
+                    {} INTEGER NOT NULL,
+                    {} INTEGER NOT NULL,
+                    {} DECIMAL(5,4) NOT NULL,
+                    {} INTEGER NOT NULL,
+                    {} INTEGER NOT NULL,
+                    {} INTEGER NOT NULL,
+                    {} INTEGER NOT NULL,
+                    {} DECIMAL(5,4) NOT NULL,
+                    {} INTEGER NOT NULL,
+                    {} INTEGER NOT NULL,
+                    {} INTEGER NOT NULL,
+                    {} INTEGER NOT NULL,
+                    {} INTEGER NOT NULL,
+                    {} INTEGER NOT NULL,
+                    {} INTEGER NOT NULL,
+                    {} INTEGER NOT NULL,
+                    {} DECIMAL(5,4) NOT NULL,
+                    {} INTEGER NOT NULL,
+                    {} INTEGER NOT NULL,
+                    {} INTEGER NOT NULL,
+                    {} INTEGER NOT NULL,
+                    {} INTEGER NOT NULL,
+                    {} INTEGER NOT NULL,
+                    {} INTEGER NOT NULL,
+                    {} INTEGER NOT NULL,
+                    {} INTEGER NOT NULL,
+                    {} INTEGER NOT NULL,
+                    {} INTEGER NOT NULL,
+                    {} INTEGER NOT NULL
+                );",
+                &_tsa_args,
+            ),
+            PredefinedQuery::CreateTablePosition => format_vec(
+                "CREATE TABLE position (
+                    {} INTEGER FOREIGN KEY,
+                    {} VARCHAR(10) FOREIGN KEY
+                    FOREIGN KEY({0}) REFERENCES player({2})
+                );",
+                &_tposa_args,
+            ),
+        }
+    }
+    
+    fn get_all_strings() -> Vec<String> {
+        PredefinedQuery::iter().map(|e| PredefinedQuery::get_string(e)).collect_vec()
     }
 }
