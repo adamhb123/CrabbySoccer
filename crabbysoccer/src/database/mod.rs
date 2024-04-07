@@ -1,9 +1,65 @@
-mod queries;
+use sqlite::{self, Connection};
+use std::{collections::HashMap, fmt::Display, fs::read_to_string, path::Path, str::FromStr};
 
-use sqlite;
-use std::{fmt::Display, fs::read_to_string, path::Path, str::FromStr};
-
-use crate::database::queries::{PredefinedQuery, PredefinedQueryTrait};
+const CREATE_TABLE_QUERIES: [&'static str; 3] = [
+    "CREATE TABLE player (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        name VARCHAR(128) NOT NULL,
+        jersey_number INTEGER NOT NULL,
+        club_name VARCHAR(128),
+        nationality VARCHAR(64) NOT NULL,
+        age INTEGER NOT NULL);",
+    "CREATE TABLE statistics (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        player_id INTEGER,
+        appearances INTEGER NOT NULL,
+        wins INTEGER NOT NULL,
+        losses INTEGER NOT NULL,
+        goals INTEGER NOT NULL,
+        goals_per_match INTEGER NOT NULL,
+        headed_goals INTEGER NOT NULL,
+        goals_right_foot INTEGER NOT NULL,
+        goals_left_foot INTEGER NOT NULL,
+        goals_from_penalties INTEGER NOT NULL,
+        goals_from_freekicks INTEGER NOT NULL,
+        shots INTEGER NOT NULL,
+        shots_on_target INTEGER NOT NULL,
+        shooting_accuracy_pct DECIMAL(5,4) NOT NULL,
+        hit_woodwork INTEGER NOT NULL,
+        clean_sheets INTEGER NOT NULL,
+        goals_conceded INTEGER NOT NULL,
+        tackles INTEGER NOT NULL,
+        tackle_success_pct DECIMAL(5,4) NOT NULL,
+        shots_blocked INTEGER NOT NULL,
+        interceptions INTEGER NOT NULL,
+        clearances INTEGER NOT NULL,
+        headed_clearances INTEGER NOT NULL,
+        own_goals INTEGER NOT NULL,
+        assists INTEGER NOT NULL,
+        passes INTEGER NOT NULL,
+        crosses INTEGER NOT NULL,
+        cross_accuracy_pct DECIMAL(5,4) NOT NULL,
+        passes_per_match INTEGER NOT NULL,
+        saves INTEGER NOT NULL,
+        penalties_saved INTEGER NOT NULL,
+        punches INTEGER NOT NULL,
+        high_claims INTEGER NOT NULL,
+        catches INTEGER NOT NULL,
+        throw_outs INTEGER NOT NULL,
+        goal_kicks INTEGER NOT NULL,
+        cards_yellow INTEGER NOT NULL,
+        cards_red INTEGER NOT NULL,
+        fouls INTEGER NOT NULL,
+        offsides INTEGER NOT NULL
+    );",
+    "CREATE TABLE position (
+        player_id INTEGER,
+        name VARCHAR(10),
+        PRIMARY KEY(player_id, name),
+        FOREIGN KEY (player_id) REFERENCES player(id),
+        CONSTRAINT chk_position_name CHECK (name IN ('Forward', 'Midfielder', 'Goalkeeper', 'Defender'))
+    );",
+];
 
 const JOIN_ALL: &str =
     "player JOIN statistics ON player.id = statistics.player_id JOIN position ON player.id = position.player_id";
@@ -102,11 +158,67 @@ fn parse_csv() -> (Vec<String>, Vec<Vec<String>>) {
     (csv_header, lines)
 }
 
+fn insert_all_into(connection: &Connection,table_name: &'static str, data: Vec<Vec<String>>){
+    data.iter().for_each(|row| connection.execute(
+        format!("INSERT INTO {} VALUES ({})", table_name, row.join(","))).unwrap())
+}
+
 pub fn csv_to_sqlite() {
+    let mut csv_to_db_attribute_map: HashMap<&'static str, &'static str> = HashMap::new();
+    csv_to_db_attribute_map.extend([
+    ("Name","name")
+    ("Jersey Number","jersey_number")
+    ("Club","club")
+    ("Position","position")
+    ("Nationality","nationality")
+    ("Age","age")
+    ("Appearances","appearances")
+    ("Wins","wins")
+    ("Losses","losses")
+    ("Goals","goals")
+    ("Goals per match","goals_per_match")
+    ("Headed goals","headed_goals")
+    ("Goals with right foot","goals_left_foot")
+    ("Goals with left foot","")
+    ("Penalties scored","")
+    ("Freekicks scored","")
+    ("Shots","")
+    ("Shots on target","")
+    ("Shooting accuracy %","")
+    ("Hit woodwork","")
+    ("Clean sheets","")
+    ("Goals conceded","")
+    ("Tackles","")
+    ("Tackle success %","")
+    ("Blocked shots","")
+    ("Interceptions","")
+    ("Clearances","")
+    ("Headed Clearance","")
+    ("Own goals","")
+    ("Assists","")
+    ("Passes","")
+    ("Passes per match","")
+    ("Crosses","")
+    ("Cross accuracy %","")
+    ("Saves","")
+    ("Penalties saved","")
+    ("Punches","")
+    ("High Claims","")
+    ("Catches","")
+    ("Throw outs","")
+    ("Goal Kicks","")
+    ("Yellow cards","")
+    ("Red cards","")
+    ("Fouls","fouls")
+    ("Offsides","offsides")
+]);
+    
+
+    println!("Retrieving data from csv...");
     let (header, data) = parse_csv();
     println!("HEADER: {:#?}\nDATA HEAD: {:#?}", header, data[0]);
     let _path = Path::new("soccer.db");
-
+    println!("Deleting old db file if exists...");
     match std::fs::remove_file(_path) {
         Ok(_) => {
             println!("Successfully deleted file: {}", _path.display())
@@ -114,9 +226,9 @@ pub fn csv_to_sqlite() {
         Err(_) => (),
     }
     let connection = sqlite::open("soccer.db").unwrap();
-    println!("Initializing database with tables...");
-    println!("Query Strings: {}", PredefinedQuery::get_all_strings().join("\n"));
-    connection.execute(PredefinedQuery::get_string(PredefinedQuery::CreateTablePlayer)).unwrap(); 
-    connection.execute(PredefinedQuery::get_string(PredefinedQuery::CreateTableStatistics)).unwrap(); 
-    connection.execute(PredefinedQuery::get_string(PredefinedQuery::CreateTablePosition)).unwrap();
+    println!("Creating database tables...");
+    CREATE_TABLE_QUERIES.iter().for_each(|e| connection.execute(e).unwrap());
+    insert_all_into(&connection, "player", data);
+    println!("Inserting data from csv into db tables...");
+
 }

@@ -15,9 +15,40 @@ fn test_database() {
 
 #[test]
 fn test_common() {
-    /* common::format_vec */
-    println!("FUFUFUFU {}", common::format_vec("Plain placeholders: One: {} Two: {} Three: {} and that's it!", &vec!["1", "2", "3"]));
-    assert!(common::format_vec("Plain placeholders: One: {} Two: {} Three: {} and that's it!", &vec!["1", "2", "3"]) == "Plain placeholders: One: 1 Two: 2 Three: 3 and that's it!");
-    println!("FUFUFUFU {}", common::format_vec("Index-based placeholders: One: {0} Two: {1} Three: {2} and that's it!", &vec!["1", "2", "3"]));
-    //assert!(common::format_vec("Index-based placeholders: One: {0} Two: {1} Three: {2} and that's it!", &vec!["1", "2", "3"]) == "Index-based placeholders: One: 1 Two: 2 Three: 3 and that's it!");
+    let mut cur_head = String::new();
+    /* common::format_vec
+       The following use cases should be covered:
+            1. Plain placeholders only:
+                1. "{}"
+                2. "a{}"
+                3. "{}a"
+                4. "{}{}"
+                5. "a{}{}"
+                6. "{}a{}"
+                7. "{}{}a"
+                8. "a{}a{}a"
+    */
+    // 1. Plain placeholders only
+    assert_eq!(common::format_vec("{}", &vec![0]) , "0");
+    assert_eq!(common::format_vec("a{}", &vec![0]) , "a0");
+    assert_eq!(common::format_vec("{}a", &vec![0]) , "0a");
+    assert_eq!(common::format_vec("{}{}", &vec![0,1]) , "01");
+    assert_eq!(common::format_vec("a{}{}", &vec![0,1]) , "a01");
+    assert_eq!(common::format_vec("{}a{}", &vec![0,1]) , "0a1");
+    assert_eq!(common::format_vec("{}{}a", &vec![0,1]) , "01a");
+    assert_eq!(common::format_vec("a{}a{}", &vec![0,1]) , "a0a1");
+    assert_eq!(common::format_vec("{}a{}a", &vec![0,1]) , "0a1a");
+    assert_eq!(common::format_vec("a{}a{}a", &vec![0,1]) , "a0a1a");
+    // Index-based placeholders only
+    assert_eq!(common::format_vec("{0}", &vec![0]) , "0");
+    assert_eq!(common::format_vec("a{0}", &vec![0]) , "a0");
+    assert_eq!(common::format_vec("{0}a", &vec![0]) , "0a");
+    assert_eq!(common::format_vec("{0}{1}", &vec![0,1]) , "01");
+    assert_eq!(common::format_vec("a{0}{1}", &vec![0,1]) , "a01");
+    assert_eq!(common::format_vec("{0}a{1}", &vec![0,1]) , "0a1");
+    assert_eq!(common::format_vec("{0}{1}a", &vec![0,1]) , "01a");
+    assert_eq!(common::format_vec("a{0}a{1}", &vec![0,1]) , "a0a1");
+    assert_eq!(common::format_vec("{0}a{1}a", &vec![0,1]) , "0a1a");
+    assert_eq!(common::format_vec("a{0}a{1}a", &vec![0,1]) , "a0a1a");
+    /* Incorrect usage */
 }

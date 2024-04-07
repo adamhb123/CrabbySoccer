@@ -1,8 +1,28 @@
+// Note: I determined this was all way overkill, so this file is a brick
+
 use std::fmt::Display;
 
 use crate::common::format_vec;
 use itertools::Itertools;
 use strum::{Display, EnumIter, IntoEnumIterator};
+
+pub trait TableNameTrait {
+    fn as_str(&self) -> &'static str;
+}
+pub enum TableName {
+    Player,
+    Statistics,
+    Position
+}
+impl TableNameTrait for TableName {
+    fn as_str(&self) -> &'static str {
+        match &self {
+            TableName::Player => "player",
+            TableName::Statistics => "statistics",
+            TableName::Position => "position",
+        }
+    }
+}
 
 pub trait TableAttributes: IntoEnumIterator {
     fn as_str(&self) -> &'static str;
@@ -153,7 +173,7 @@ impl PredefinedQueryTrait for PredefinedQuery {
     fn get_string(query: PredefinedQuery) -> String {
         let mut _tpa_args: Vec<&str> = _TPA::iter().map(|e| e.as_str()).collect();
         let mut _tsa_args: Vec<&str> = _TSA::iter().map(|e| e.as_str()).collect();
-        let mut _tposa_args: Vec<&str> = _TPA::iter().map(|e| e.as_str()).collect::<Vec<&str>>();
+        let mut _tposa_args: Vec<&str> = _TPOSA::iter().map(|e| e.as_str()).collect::<Vec<&str>>();
         // Add inter-table relation arguments
         _tposa_args.push(_tpa_args[0]);
 
@@ -216,9 +236,11 @@ impl PredefinedQueryTrait for PredefinedQuery {
             ),
             PredefinedQuery::CreateTablePosition => format_vec(
                 "CREATE TABLE position (
-                    {} INTEGER FOREIGN KEY,
-                    {} VARCHAR(10) FOREIGN KEY
-                    FOREIGN KEY({0}) REFERENCES player({2})
+                    {} INTEGER,
+                    {} VARCHAR(10),
+                    PRIMARY KEY({0}, {1}),
+                    FOREIGN KEY ({0}) REFERENCES player({2}),
+                    CONSTRAINT chk_position_name CHECK ({1} IN ('Forward', 'Midfielder', 'Goalkeeper', 'Defender'))
                 );",
                 &_tposa_args,
             ),
@@ -228,4 +250,8 @@ impl PredefinedQueryTrait for PredefinedQuery {
     fn get_all_strings() -> Vec<String> {
         PredefinedQuery::iter().map(|e| PredefinedQuery::get_string(e)).collect_vec()
     }
+}
+
+fn insert(table_name: &'static str, values: Vec<&str>){
+
 }
