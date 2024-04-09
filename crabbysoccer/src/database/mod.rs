@@ -1,5 +1,8 @@
+use itertools::Itertools;
 use sqlite::{self, Connection};
-use std::{collections::HashMap, fmt::Display, fs::read_to_string, path::Path, str::FromStr};
+use std::{collections::HashMap, fmt::Display, fs::read_to_string, path::Path};
+
+type AttributeMap<'a> = HashMap<&'a str, &'a str>;
 
 const CREATE_TABLE_QUERIES: [&'static str; 3] = [
     "CREATE TABLE player (
@@ -158,62 +161,75 @@ fn parse_csv() -> (Vec<String>, Vec<Vec<String>>) {
     (csv_header, lines)
 }
 
-fn insert_all_into(connection: &Connection,table_name: &'static str, data: Vec<Vec<String>>){
-    data.iter().for_each(|row| connection.execute(
-        format!("INSERT INTO {} VALUES ({})", table_name, row.join(","))).unwrap())
+fn insert_all_into<T: Copy + Display> (
+    connection: &Connection,
+    table_name: &'static str,
+    attributes: &Vec<T>,
+    data: &Vec<Vec<String>>,
+) -> Result<(), sqlite::Error> {
+    let values_string: String = data.iter().map(|row: &Vec<String>| {
+        let formatted: Vec<String> = row.iter().map(|e| {
+            if e.trim().parse::<f64>().is_ok() { e.clone() }
+            else {
+                format!("\"{}\"", e) // Add quotations for Stringy data 
+            }
+        }).collect();
+        format!("({}),", formatted.join(","))
+    }).collect::<Vec<String>>().join("\n");
+    let query = format!("INSERT INTO {}({}) VALUES {}", table_name, attributes.iter().copied().join(","), values_string);
+    println!("QUERY: {}", query);
+    connection.execute(query)
 }
 
 pub fn csv_to_sqlite() {
-    let mut csv_to_db_attribute_map: HashMap<&'static str, &'static str> = HashMap::new();
+    let mut csv_to_db_attribute_map: AttributeMap = HashMap::new();
     csv_to_db_attribute_map.extend([
-    ("Name","name")
-    ("Jersey Number","jersey_number")
-    ("Club","club")
-    ("Position","position")
-    ("Nationality","nationality")
-    ("Age","age")
-    ("Appearances","appearances")
-    ("Wins","wins")
-    ("Losses","losses")
-    ("Goals","goals")
-    ("Goals per match","goals_per_match")
-    ("Headed goals","headed_goals")
-    ("Goals with right foot","goals_left_foot")
-    ("Goals with left foot","")
-    ("Penalties scored","")
-    ("Freekicks scored","")
-    ("Shots","")
-    ("Shots on target","")
-    ("Shooting accuracy %","")
-    ("Hit woodwork","")
-    ("Clean sheets","")
-    ("Goals conceded","")
-    ("Tackles","")
-    ("Tackle success %","")
-    ("Blocked shots","")
-    ("Interceptions","")
-    ("Clearances","")
-    ("Headed Clearance","")
-    ("Own goals","")
-    ("Assists","")
-    ("Passes","")
-    ("Passes per match","")
-    ("Crosses","")
-    ("Cross accuracy %","")
-    ("Saves","")
-    ("Penalties saved","")
-    ("Punches","")
-    ("High Claims","")
-    ("Catches","")
-    ("Throw outs","")
-    ("Goal Kicks","")
-    ("Yellow cards","")
-    ("Red cards","")
-    ("Fouls","fouls")
-    ("Offsides","offsides")
-]);
-    
-
+        ("Name", "name"),
+        ("Jersey Number", "jersey_number"),
+        ("Club", "club"),
+        ("Position", "position"),
+        ("Nationality", "nationality"),
+        ("Age", "age"),
+        ("Appearances", "appearances"),
+        ("Wins", "wins"),
+        ("Losses", "losses"),
+        ("Goals", "goals"),
+        ("Goals per match", "goals_per_match"),
+        ("Headed goals", "headed_goals"),
+        ("Goals with right foot", "goals_left_foot"),
+        ("Goals with left foot", "goals_right_foot"),
+        ("Penalties scored", "goals_from_penalties"),
+        ("Freekicks scored", "goals_from_freekicks"),
+        ("Shots", "shots"),
+        ("Shots on target", "shots_on_target"),
+        ("Shooting accuracy %", "shooting_accuracy_pct"),
+        ("Hit woodwork", "hit_woodwork"),
+        ("Clean sheets", "clean_sheets"),
+        ("Goals conceded", "goals_conceded"),
+        ("Tackles", "tackles"),
+        ("Tackle success %", "tackle_success_pct"),
+        ("Blocked shots", "shots_blocked"),
+        ("Interceptions", "interceptions"),
+        ("Clearances", "clearances"),
+        ("Headed Clearance", "headed_clearances"),
+        ("Own goals", "own_goals"),
+        ("Assists", "assists"),
+        ("Passes", "passes"),
+        ("Passes per match", "passes_per_match"),
+        ("Crosses", "crosses"),
+        ("Cross accuracy %", "cross_accuracy_pct"),
+        ("Saves", "saves"),
+        ("Penalties saved", "penalties_saved"),
+        ("Punches", "punches"),
+        ("High Claims", "high_claims"),
+        ("Catches", "catches"),
+        ("Throw outs", "throw_outs"),
+        ("Goal Kicks", "goal_kicks"),
+        ("Yellow cards", "cards_yellow"),
+        ("Red cards", "cards_red"),
+        ("Fouls", "fouls"),
+        ("Offsides", "offsides"),
+    ]);
     println!("Retrieving data from csv...");
     let (header, data) = parse_csv();
     println!("HEADER: {:#?}\nDATA HEAD: {:#?}", header, data[0]);
@@ -228,7 +244,7 @@ pub fn csv_to_sqlite() {
     let connection = sqlite::open("soccer.db").unwrap();
     println!("Creating database tables...");
     CREATE_TABLE_QUERIES.iter().for_each(|e| connection.execute(e).unwrap());
-    insert_all_into(&connection, "player", data);
     println!("Inserting data from csv into db tables...");
-
+    let attributes: Vec<&&str> = header.iter().map(|a| csv_to_db_attribute_map.get(a.as_str()).unwrap()).collect();
+    insert_all_into(&connection, "player", &attributes, &data).unwrap();
 }
