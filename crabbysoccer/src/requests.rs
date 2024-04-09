@@ -61,7 +61,7 @@ impl From<Vec<String>> for Endpoint {
         for qp_entry in query_params {
             let (p, vals) = qp_entry.split_once("=").unwrap();
             let vals: Vec<String> = vals.split(",").map(String::from).collect();
-            query_pv_map.insert(p.to_string(), vals);
+            query_pv_map.insert(p.to_owned(), vals);
         }
         Endpoint::new(endpoint, query_pv_map)
     }

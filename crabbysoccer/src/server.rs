@@ -1,13 +1,13 @@
 use crate::{
     database,
-    requests::{self, Endpoint, QueryPVMap},
+    requests::{Endpoint, QueryPVMap},
 };
 use std::{
     collections::HashMap, io::{BufRead, BufReader}, net::{TcpListener, TcpStream}, thread::{self, JoinHandle}
 };
 
 fn parse_request(request: Vec<String>) -> Endpoint {
-    let uri = (request[0].split(" ").collect::<Vec<&str>>()[1])[1..].to_string();
+    let uri = (request[0].split(" ").collect::<Vec<&str>>()[1])[1..].to_owned();
     let (uri, query_param_str) = match uri.split_once("?") {
         Some(split) => split,
         None => (uri.as_str(), ""),
@@ -74,7 +74,7 @@ pub fn run() {
         let stream = stream.unwrap();
         println!(
             "Incoming connection from: {}",
-            stream.peer_addr().unwrap().to_string()
+            stream.peer_addr().unwrap().to_owned()
         );
         thread_handles.push(thread::spawn(|| handle_connection(stream)));
     }

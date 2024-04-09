@@ -55,7 +55,7 @@ fn try_connect() -> TcpStream {
             Ok(s) => {
                 let peer_addr = match s.peer_addr() {
                     Ok(addr) => addr.to_string(),
-                    Err(_) => "[ERROR] UNABLE TO RETREIVE SERVER ADDRESS".to_string()
+                    Err(_) => "[ERROR] UNABLE TO RETREIVE SERVER ADDRESS".to_owned()
                 };
                 println!("Connection established with {}", peer_addr);
                 s

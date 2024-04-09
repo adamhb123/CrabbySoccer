@@ -2,7 +2,30 @@ use itertools::Itertools;
 use sqlite::{self, Connection};
 use std::{collections::HashMap, fmt::Display, fs::read_to_string, path::Path};
 
-type AttributeMap<'a> = HashMap<&'a str, &'a str>;
+trait TableNameTrait {
+    fn as_str(&self) -> &str;
+} 
+#[derive(PartialEq, Eq)]
+enum TableName {
+    Player,
+    Statistics,
+    Position,
+}
+impl TableNameTrait for TableName {
+    fn as_str(&self) -> &str {
+        match &self {
+            TableName::Player => "player",
+            TableName::Statistics => "statistics",
+            TableName::Position => "position",
+        }
+    }
+}
+impl Display for TableName {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.write_str(&self.as_str())
+    }
+}
+type AttributeMap<'a> = HashMap<&'a str, (TableName, &'static str)>;
 
 const CREATE_TABLE_QUERIES: [&'static str; 3] = [
     "CREATE TABLE player (
@@ -87,10 +110,10 @@ impl DB {
                     statistics.insert(0, ',');
                     statistics
                 } else {
-                    "".to_string()
+                    "".into()
                 }
             }
-            None => "".to_string(),
+            None => "".into(),
         };
 
         let where_pid_clause = match player_id {
@@ -107,7 +130,7 @@ fn read_lines(filename: &str) -> Vec<String> {
     read_to_string(filename)
         .unwrap() // panic on possible file-reading errors
         .lines() // split the string into an iterator of string slices
-        .map(|e| e.trim().to_string())
+        .map(|e| e.trim().into())
         .collect() // gather them together into a vector
 }
 
@@ -161,22 +184,51 @@ fn parse_csv() -> (Vec<String>, Vec<Vec<String>>) {
     (csv_header, lines)
 }
 
-fn insert_all_into<T: Copy + Display> (
+fn insert_all_into(
     connection: &Connection,
-    table_name: &'static str,
-    attributes: &Vec<T>,
+    table_name: TableName,
+    attributes: &Vec<&(TableName, &str)>,
     data: &Vec<Vec<String>>,
 ) -> Result<(), sqlite::Error> {
-    let values_string: String = data.iter().map(|row: &Vec<String>| {
-        let formatted: Vec<String> = row.iter().map(|e| {
-            if e.trim().parse::<f64>().is_ok() { e.clone() }
-            else {
-                format!("\"{}\"", e) // Add quotations for Stringy data 
-            }
-        }).collect();
-        format!("({}),", formatted.join(","))
-    }).collect::<Vec<String>>().join("\n");
-    let query = format!("INSERT INTO {}({}) VALUES {}", table_name, attributes.iter().copied().join(","), values_string);
+    let (data_indices, attributes): (Vec<usize>, Vec<&(TableName, &str)>) = attributes.iter().enumerate().filter(|(i, e)| e.0 == table_name).unzip();
+    println!("INDICES: {:?}", data_indices);
+    let attributes: Vec<&str> = attributes.iter().map(|e| e.1).collect();
+    let data:  Vec<Vec<&String>> = data.iter().map(|r| r.iter().enumerate().filter(|(i,_)| data_indices.contains(i)).map(|e| e.1).collect()).collect();
+    println!("DATA: {:?}", data);
+    let values_string: String = data
+        .iter()
+        .map(|row: &Vec<String>| {
+            let formatted: Vec<String> = row
+                .iter()
+                .map(|e| {
+                    let e = e.trim().to_owned();
+                    if e.is_empty() {
+                        "0".to_owned()
+                    } else {
+                        if e.parse::<f64>().is_ok() {
+                            e.clone()
+                        } else {
+                            if e.ends_with("%") {
+                                // Percentage into decimal - does not enforce the total number of digits denoted by n in SQL's Decimal(n, p), but does enforce p (# of digits after decimal)
+                                format!("{:.2}", e[..e.len() - 1].parse::<f64>().unwrap() / 100.0)
+                            } else {
+                                // Stringy data
+                                format!("\"{}\"", e) // Add quotations for Stringy data
+                            }
+                        }
+                    }
+                })
+                .collect();
+            format!("({})", formatted.join(","))
+        })
+        .collect::<Vec<String>>()
+        .join(",\n");
+    let query = format!(
+        "INSERT INTO {}({}) VALUES {};",
+        table_name,
+        attributes.join(","),
+        values_string
+    );
     println!("QUERY: {}", query);
     connection.execute(query)
 }
@@ -184,51 +236,51 @@ fn insert_all_into<T: Copy + Display> (
 pub fn csv_to_sqlite() {
     let mut csv_to_db_attribute_map: AttributeMap = HashMap::new();
     csv_to_db_attribute_map.extend([
-        ("Name", "name"),
-        ("Jersey Number", "jersey_number"),
-        ("Club", "club"),
-        ("Position", "position"),
-        ("Nationality", "nationality"),
-        ("Age", "age"),
-        ("Appearances", "appearances"),
-        ("Wins", "wins"),
-        ("Losses", "losses"),
-        ("Goals", "goals"),
-        ("Goals per match", "goals_per_match"),
-        ("Headed goals", "headed_goals"),
-        ("Goals with right foot", "goals_left_foot"),
-        ("Goals with left foot", "goals_right_foot"),
-        ("Penalties scored", "goals_from_penalties"),
-        ("Freekicks scored", "goals_from_freekicks"),
-        ("Shots", "shots"),
-        ("Shots on target", "shots_on_target"),
-        ("Shooting accuracy %", "shooting_accuracy_pct"),
-        ("Hit woodwork", "hit_woodwork"),
-        ("Clean sheets", "clean_sheets"),
-        ("Goals conceded", "goals_conceded"),
-        ("Tackles", "tackles"),
-        ("Tackle success %", "tackle_success_pct"),
-        ("Blocked shots", "shots_blocked"),
-        ("Interceptions", "interceptions"),
-        ("Clearances", "clearances"),
-        ("Headed Clearance", "headed_clearances"),
-        ("Own goals", "own_goals"),
-        ("Assists", "assists"),
-        ("Passes", "passes"),
-        ("Passes per match", "passes_per_match"),
-        ("Crosses", "crosses"),
-        ("Cross accuracy %", "cross_accuracy_pct"),
-        ("Saves", "saves"),
-        ("Penalties saved", "penalties_saved"),
-        ("Punches", "punches"),
-        ("High Claims", "high_claims"),
-        ("Catches", "catches"),
-        ("Throw outs", "throw_outs"),
-        ("Goal Kicks", "goal_kicks"),
-        ("Yellow cards", "cards_yellow"),
-        ("Red cards", "cards_red"),
-        ("Fouls", "fouls"),
-        ("Offsides", "offsides"),
+        ("Name", (TableName::Player, "name")),
+        ("Jersey Number", (TableName::Player, "jersey_number")),
+        ("Club", (TableName::Player, "club_name")),
+        ("Position", (TableName::Position, "position")),
+        ("Nationality", (TableName::Player, "nationality")),
+        ("Age", (TableName::Player, "age")),
+        ("Appearances", (TableName::Statistics, "appearances")),
+        ("Wins", (TableName::Statistics, "wins")),
+        ("Losses", (TableName::Statistics, "losses")),
+        ("Goals", (TableName::Statistics, "goals")),
+        ("Goals per match", (TableName::Statistics, "goals_per_match")),
+        ("Headed goals", (TableName::Statistics, "headed_goals")),
+        ("Goals with right foot", (TableName::Statistics, "goals_left_foot")),
+        ("Goals with left foot", (TableName::Statistics, "goals_right_foot")),
+        ("Penalties scored", (TableName::Statistics, "goals_from_penalties")),
+        ("Freekicks scored", (TableName::Statistics, "goals_from_freekicks")),
+        ("Shots", (TableName::Statistics, "shots")),
+        ("Shots on target", (TableName::Statistics, "shots_on_target")),
+        ("Shooting accuracy %", (TableName::Statistics, "shooting_accuracy_pct")),
+        ("Hit woodwork", (TableName::Statistics, "hit_woodwork")),
+        ("Clean sheets", (TableName::Statistics, "clean_sheets")),
+        ("Goals conceded", (TableName::Statistics, "goals_conceded")),
+        ("Tackles", (TableName::Statistics, "tackles")),
+        ("Tackle success %", (TableName::Statistics, "tackle_success_pct")),
+        ("Blocked shots", (TableName::Statistics, "shots_blocked")),
+        ("Interceptions", (TableName::Statistics, "interceptions")),
+        ("Clearances", (TableName::Statistics, "clearances")),
+        ("Headed Clearance", (TableName::Statistics, "headed_clearances")),
+        ("Own goals", (TableName::Statistics, "own_goals")),
+        ("Assists", (TableName::Statistics, "assists")),
+        ("Passes", (TableName::Statistics, "passes")),
+        ("Passes per match", (TableName::Statistics, "passes_per_match")),
+        ("Crosses", (TableName::Statistics, "crosses")),
+        ("Cross accuracy %", (TableName::Statistics, "cross_accuracy_pct")),
+        ("Saves", (TableName::Statistics, "saves")),
+        ("Penalties saved", (TableName::Statistics, "penalties_saved")),
+        ("Punches", (TableName::Statistics, "punches")),
+        ("High Claims", (TableName::Statistics, "high_claims")),
+        ("Catches", (TableName::Statistics, "catches")),
+        ("Throw outs", (TableName::Statistics, "throw_outs")),
+        ("Goal Kicks", (TableName::Statistics, "goal_kicks")),
+        ("Yellow cards", (TableName::Statistics, "cards_yellow")),
+        ("Red cards", (TableName::Statistics, "cards_red")),
+        ("Fouls", (TableName::Statistics, "fouls")),
+        ("Offsides", (TableName::Statistics, "offsides")),
     ]);
     println!("Retrieving data from csv...");
     let (header, data) = parse_csv();
@@ -245,6 +297,12 @@ pub fn csv_to_sqlite() {
     println!("Creating database tables...");
     CREATE_TABLE_QUERIES.iter().for_each(|e| connection.execute(e).unwrap());
     println!("Inserting data from csv into db tables...");
-    let attributes: Vec<&&str> = header.iter().map(|a| csv_to_db_attribute_map.get(a.as_str()).unwrap()).collect();
-    insert_all_into(&connection, "player", &attributes, &data).unwrap();
+    let attributes: Vec<&(TableName, &str)> = header
+        .iter()
+        .map(|a| csv_to_db_attribute_map.get(a.as_str()).unwrap())
+        .collect();
+
+    insert_all_into(&connection, TableName::Player, &attributes, &data).unwrap();
+    insert_all_into(&connection, TableName::Statistics, &attributes, &data).unwrap();
+    insert_all_into(&connection, TableName::Position, &attributes, &data).unwrap();
 }
