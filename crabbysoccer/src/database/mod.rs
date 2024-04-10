@@ -1,11 +1,12 @@
 use itertools::Itertools;
 use sqlite::{self, Connection};
 use std::{collections::HashMap, fmt::Display, fs::read_to_string, path::Path};
+use strum::{EnumIter, IntoEnumIterator};
 
 trait TableNameTrait {
     fn as_str(&self) -> &str;
-} 
-#[derive(PartialEq, Eq)]
+}
+#[derive(PartialEq, Eq, EnumIter)]
 enum TableName {
     Player,
     Statistics,
@@ -190,14 +191,24 @@ fn insert_all_into(
     attributes: &Vec<&(TableName, &str)>,
     data: &Vec<Vec<String>>,
 ) -> Result<(), sqlite::Error> {
-    let (data_indices, attributes): (Vec<usize>, Vec<&(TableName, &str)>) = attributes.iter().enumerate().filter(|(i, e)| e.0 == table_name).unzip();
+    let (data_indices, attributes): (Vec<usize>, Vec<&(TableName, &str)>) =
+        attributes.iter().enumerate().filter(|(_, e)| e.0 == table_name).unzip();
     println!("INDICES: {:?}", data_indices);
     let attributes: Vec<&str> = attributes.iter().map(|e| e.1).collect();
-    let data:  Vec<Vec<&String>> = data.iter().map(|r| r.iter().enumerate().filter(|(i,_)| data_indices.contains(i)).map(|e| e.1).collect()).collect();
+    let data: Vec<Vec<&String>> = data
+        .iter()
+        .map(|r| {
+            r.iter()
+                .enumerate()
+                .filter(|(i, _)| data_indices.contains(i))
+                .map(|e| e.1)
+                .collect()
+        })
+        .collect();
     println!("DATA: {:?}", data);
     let values_string: String = data
         .iter()
-        .map(|row: &Vec<String>| {
+        .map(|row| {
             let formatted: Vec<String> = row
                 .iter()
                 .map(|e| {
@@ -233,13 +244,26 @@ fn insert_all_into(
     connection.execute(query)
 }
 
+pub fn debug_view_database() {
+    let connection = sqlite::open("soccer.db").unwrap();
+    TableName::iter().for_each(|e| {
+            connection.iterate(format!("SELECT * FROM {} LIMIT 10;", e), |pairs| {
+                for &(name, value) in pairs.iter() {
+                    println!("{}\t|\t{}", name, value.unwrap_or("none"))
+                }
+                true
+            }).unwrap();
+        }
+    );
+}
+
 pub fn csv_to_sqlite() {
     let mut csv_to_db_attribute_map: AttributeMap = HashMap::new();
     csv_to_db_attribute_map.extend([
         ("Name", (TableName::Player, "name")),
         ("Jersey Number", (TableName::Player, "jersey_number")),
         ("Club", (TableName::Player, "club_name")),
-        ("Position", (TableName::Position, "position")),
+        ("Position", (TableName::Position, "name")),
         ("Nationality", (TableName::Player, "nationality")),
         ("Age", (TableName::Player, "age")),
         ("Appearances", (TableName::Statistics, "appearances")),

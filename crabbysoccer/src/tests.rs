@@ -11,6 +11,7 @@ fn test_endpoints(){
 fn test_database() {
     // database::csv_to_sqlite
     println!("{:?}", database::csv_to_sqlite());
+    database::debug_view_database();
 }
 
 #[test]
