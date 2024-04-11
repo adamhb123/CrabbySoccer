@@ -40,9 +40,6 @@ impl Endpoint {
         formatted.pop().unwrap();
         Ok(formatted)
     }
-    pub fn as_bytes(&self) -> Vec<u8> {
-        self.get_valued_uri().unwrap().as_bytes().to_owned()
-    }
     pub fn get_request_string(&self) -> String {
         let uri = self.get_valued_uri().unwrap();
         format!("GET {} HTTP/1.1\nUser-Agent: crabbysoccer/1.0.0\nHost: temporarily-not-included\nAccept-Language: en\n\n", uri)
@@ -80,8 +77,4 @@ pub fn clone_authoritative_endpoint_by_uri(uri: &str) -> Option<Endpoint> {
     if ep.len() > 1 { panic!("Duplicate ENDPOINTS entry: {}", uri); }
     else if ep.len() == 0 { None }
     else { Some(ep[0].clone()) }
-}
-
-pub fn endpoint_uri_exists(uri: &str) -> bool {
-    AUTHORITATIVE_ENDPOINTS().map(|e| e.uri).contains(&uri.to_string())
 }

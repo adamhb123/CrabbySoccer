@@ -16,7 +16,6 @@ fn test_database() {
 
 #[test]
 fn test_common() {
-    let mut cur_head = String::new();
     /* common::format_vec
        The following use cases should be covered:
             1. Plain placeholders only:

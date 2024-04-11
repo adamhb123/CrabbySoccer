@@ -40,7 +40,7 @@ fn respond(request: &Endpoint, db: &database::DB) {
             if statistics.is_some() { Some(statistics.unwrap().clone()) } else { None }
         );
 
-        db.get_player(player_id_arg, statistics_arg);
+        db.get_player(player_id_arg, statistics_arg).unwrap();
     }
 }
 

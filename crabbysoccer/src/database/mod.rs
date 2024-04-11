@@ -1,4 +1,3 @@
-use itertools::Itertools;
 use sqlite::{self, Connection};
 use std::{collections::HashMap, fmt::Display, fs::read_to_string, path::Path};
 use strum::{EnumIter, IntoEnumIterator};
@@ -26,9 +25,8 @@ impl Display for TableName {
         f.write_str(&self.as_str())
     }
 }
-type AttributeMap<'a> = HashMap<&'a str, (TableName, &'static str)>;
-
 const CREATE_TABLE_QUERIES: [&'static str; 3] = [
+    // player
     "CREATE TABLE player (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
         name VARCHAR(128) NOT NULL,
@@ -36,6 +34,7 @@ const CREATE_TABLE_QUERIES: [&'static str; 3] = [
         club_name VARCHAR(128),
         nationality VARCHAR(64) NOT NULL,
         age INTEGER NOT NULL);",
+    // statistics
     "CREATE TABLE statistics (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
         player_id INTEGER,
@@ -77,8 +76,10 @@ const CREATE_TABLE_QUERIES: [&'static str; 3] = [
         cards_yellow INTEGER NOT NULL,
         cards_red INTEGER NOT NULL,
         fouls INTEGER NOT NULL,
-        offsides INTEGER NOT NULL
+        offsides INTEGER NOT NULL,
+        FOREIGN KEY (player_id) REFERENCES player(id)
     );",
+    // position
     "CREATE TABLE position (
         player_id INTEGER,
         name VARCHAR(10),
@@ -121,9 +122,10 @@ impl DB {
             Some(id) => format!("WHERE player.id = {id}"),
             None => "".to_owned(),
         };
-        let query = format!("SELECT player.id, position.name {statistics_string} FROM {JOIN_ALL} {where_pid_clause};");
-        println!("Querying DB: {}", query);
-        self.connection.execute(query)
+        let statement =
+            format!("SELECT player.id, position.name {statistics_string} FROM {JOIN_ALL} {where_pid_clause};");
+        println!("Querying DB: {}", statement);
+        self.connection.execute(statement)
     }
 }
 
@@ -191,25 +193,39 @@ fn insert_all_into(
     attributes: &Vec<&(TableName, &str)>,
     data: &Vec<Vec<String>>,
 ) -> Result<(), sqlite::Error> {
+    // Get data_indices and respective attributes for table_name
     let (data_indices, attributes): (Vec<usize>, Vec<&(TableName, &str)>) =
         attributes.iter().enumerate().filter(|(_, e)| e.0 == table_name).unzip();
     println!("INDICES: {:?}", data_indices);
-    let attributes: Vec<&str> = attributes.iter().map(|e| e.1).collect();
-    let data: Vec<Vec<&String>> = data
+    // Map attributes (TableName, attribute_name pair) to just the attribute name (i.e., the column name)
+    let mut attributes: Vec<&str> = attributes.iter().map(|e| e.1).collect();
+    // Retrieve appropriate data relevant to the table using data_indices
+    let mut data: Vec<Vec<String>> = data
         .iter()
         .map(|r| {
             r.iter()
                 .enumerate()
                 .filter(|(i, _)| data_indices.contains(i))
-                .map(|e| e.1)
+                .map(|e| e.1.to_owned())
                 .collect()
         })
         .collect();
-    println!("DATA: {:?}", data);
-    let values_string: String = data
+    println!("DATA[0]: {:?}", data[0]);
+
+    // Handle foreign key inserts
+    let player_ids = (1..=data.len()).map(|e| e.to_string()).collect::<Vec<String>>();
+    match table_name {
+        TableName::Player => (),
+        TableName::Statistics | TableName::Position => {
+            attributes.push("player_id");
+            data.iter_mut().enumerate().for_each(|(i, e)| e.push(player_ids[i].to_owned()))
+        },
+    }
+
+    let values_string: String = data // Parse VALUES entries; Prepare for SQL statement
         .iter()
         .map(|row| {
-            let formatted: Vec<String> = row
+            let formatted: Vec<String> = row // Format each value in data row
                 .iter()
                 .map(|e| {
                     let e = e.trim().to_owned();
@@ -220,7 +236,8 @@ fn insert_all_into(
                             e.clone()
                         } else {
                             if e.ends_with("%") {
-                                // Percentage into decimal - does not enforce the total number of digits denoted by n in SQL's Decimal(n, p), but does enforce p (# of digits after decimal)
+                                // Percentage into decimal - does not enforce the total number of digits denoted by n in SQL's Decimal(n, p),
+                                // but does enforce p (# of digits after decimal)
                                 format!("{:.2}", e[..e.len() - 1].parse::<f64>().unwrap() / 100.0)
                             } else {
                                 // Stringy data
@@ -230,35 +247,39 @@ fn insert_all_into(
                     }
                 })
                 .collect();
-            format!("({})", formatted.join(","))
+            format!("({})", formatted.join(",")) // Join each value in row with comma
         })
         .collect::<Vec<String>>()
-        .join(",\n");
-    let query = format!(
+        .join(",\n"); // Join each VALUES entry with comma-separator and newline
+
+    
+    // Prepare final statement for execution
+    let statement = format!(
         "INSERT INTO {}({}) VALUES {};",
         table_name,
         attributes.join(","),
         values_string
     );
-    println!("QUERY: {}", query);
-    connection.execute(query)
+    println!("statement: {}", statement);
+    connection.execute(statement)
 }
 
 pub fn debug_view_database() {
     let connection = sqlite::open("soccer.db").unwrap();
     TableName::iter().for_each(|e| {
-            connection.iterate(format!("SELECT * FROM {} LIMIT 10;", e), |pairs| {
+        connection
+            .iterate(format!("SELECT * FROM {} LIMIT 10;", e), |pairs| {
                 for &(name, value) in pairs.iter() {
                     println!("{}\t|\t{}", name, value.unwrap_or("none"))
                 }
                 true
-            }).unwrap();
-        }
-    );
+            })
+            .unwrap();
+    });
 }
 
-pub fn csv_to_sqlite() {
-    let mut csv_to_db_attribute_map: AttributeMap = HashMap::new();
+pub fn csv_to_sqlite<'a>() {
+    let mut csv_to_db_attribute_map: HashMap<&'a str, (TableName, &'static str)> = HashMap::new();
     csv_to_db_attribute_map.extend([
         ("Name", (TableName::Player, "name")),
         ("Jersey Number", (TableName::Player, "jersey_number")),
@@ -326,6 +347,10 @@ pub fn csv_to_sqlite() {
         .map(|a| csv_to_db_attribute_map.get(a.as_str()).unwrap())
         .collect();
 
+    // TODO: Need to add foreign key constraints: 
+    // statistics.player_id -> player.id
+    // position.player_id -> player.id
+    // In order to do this, perhaps add a "universal_data" Option arg to insert_all_into that applies regardless of table_name restriction
     insert_all_into(&connection, TableName::Player, &attributes, &data).unwrap();
     insert_all_into(&connection, TableName::Statistics, &attributes, &data).unwrap();
     insert_all_into(&connection, TableName::Position, &attributes, &data).unwrap();
