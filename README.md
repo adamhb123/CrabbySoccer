@@ -147,7 +147,7 @@ The DB Schema is as follows, by table:
 | attribute             | type         | constraints |
 |-----------------------|--------------|-------------|
 | player_id             | INTEGER      | PRIMARY KEY; FOREIGN KEY |
-| name                  | VARCHAR(32)  | PRIMARY KEY |
+| name                  | VARCHAR(10)  | PRIMARY KEY |
 * player_id and name are used in conjunction as the PRIMARY KEY of the position table
 * Note: Conventions for position 'name' are followed as per the borrowed database. I.e.:
     * Forward

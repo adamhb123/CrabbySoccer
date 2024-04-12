@@ -19,26 +19,32 @@ impl std::fmt::Display for ApplicationType {
     }
 }
 
-fn parse_args(args: std::env::Args) -> ApplicationType {
-    match args.collect::<Vec<String>>().get(1) {
+fn parse_args(args: std::env::Args) -> (ApplicationType, Option<bool>) {
+    let args: Vec<String> = args.collect();
+    // init_db is only relevant to the server
+    let init_db: Option<bool> = if let Some(utype) = args.get(2) {
+        if utype.contains("init-db") { Some(true) }
+        else { Some(false) }
+    } else { None };
+    match args.get(1) {
         Some(s) => match s.to_lowercase() { 
-            s if s.contains("server") => ApplicationType::Server,
-            s if s.contains("client") => ApplicationType::Client,
-            _ => { println!("Invalid ApplicationType argument provided, assuming Client..."); ApplicationType::Client}
+            s if s.contains("server") => (ApplicationType::Server, init_db),
+            s if s.contains("client") => (ApplicationType::Client, None),
+            _ => { println!("Invalid ApplicationType argument provided, assuming Client..."); (ApplicationType::Client, None)}
         },
         None => {
             println!("ApplicationType argument not provided, assuming Client...");
-            ApplicationType::Client
+            (ApplicationType::Client, None)
         }
     }
 }
 
 
 fn main() {
-    let utype = parse_args(std::env::args());
+    let (utype, init_db)= parse_args(std::env::args());
     println!("Running as: {}", utype);
     if utype == ApplicationType::Server {
-        server::run();
+        server::run(init_db);
     } else if utype == ApplicationType::Client {
         client::run();
     }

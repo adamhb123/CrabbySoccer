@@ -3,7 +3,7 @@ use crate::{
     requests::{Endpoint, QueryPVMap},
 };
 use std::{
-    collections::HashMap, io::{BufRead, BufReader}, net::{TcpListener, TcpStream}, thread::{self, JoinHandle}
+    collections::HashMap, io::{BufRead, BufReader, ErrorKind, self, Write}, net::{TcpListener, TcpStream}, thread::{self, JoinHandle}, sync::{Arc, atomic::{AtomicBool, Ordering}}
 };
 
 fn parse_request(request: Vec<String>) -> Endpoint {
@@ -67,17 +67,76 @@ fn cleanup(thread_handles: &mut Vec<JoinHandle<()>>) {
     }
 }
 
-pub fn run() {
+enum InputAction {
+    Quit
+}
+
+fn parse_input(buf: &str) -> Option<InputAction> {
+    let argsplit: Vec<String> = buf.split(" ").map(|e| e.trim().to_lowercase()).collect();
+    if argsplit[0].contains("quit") { Some(InputAction::Quit) }
+    else { None }
+}
+
+
+fn run_cli(shutdown_trigger: Arc<AtomicBool>) {
+    let mut buf: String = String::new();
+    
+    loop {
+        buf.clear();
+        print!("$ ");
+        io::stdout().flush().unwrap();
+        io::stdin().read_line(&mut buf).unwrap();
+        let buf = buf.trim();
+        match parse_input(&buf) {
+            Some(action) => {
+                match action {
+                    InputAction::Quit => shutdown_trigger.store(true, Ordering::Relaxed),
+                }
+            },
+            None => (),
+        };
+    }
+}
+
+pub fn run(init_db: Option<bool>) {
+    // Define events
+    let shutdown_trigger = Arc::new(AtomicBool::new(false));
+    let cli_shutdown_trigger = shutdown_trigger.clone();
+    
+    if init_db.is_some_and(|b| b) {
+        println!("Database initialization requested");
+        println!("Running initialization (conversion of 'soccer.csv' -> 'soccer.db'");
+        database::csv_to_sqlite();
+    }
+    println!("Starting server...");
     let listener = TcpListener::bind("127.0.0.1:7878").unwrap();
-    let mut thread_handles: Vec<JoinHandle<()>> = vec![];
+    listener.set_nonblocking(true).expect("Cannot set non-blocking");
+    let mut stream_thread_handles: Vec<JoinHandle<()>> = vec![];
+    println!("Server started successfully!");
+    // Initialize Server CLI IO
+    let cli_thread_handle = thread::spawn(|| run_cli(cli_shutdown_trigger));
     for stream in listener.incoming() {
-        let stream = stream.unwrap();
-        println!(
-            "Incoming connection from: {}",
-            stream.peer_addr().unwrap().to_owned()
-        );
-        thread_handles.push(thread::spawn(|| handle_connection(stream)));
+        match stream {
+            Ok(_stream) => {
+                println!(
+                    "Incoming connection from: {}",
+                    _stream.peer_addr().unwrap().to_string()
+                );
+                stream_thread_handles.push(thread::spawn(|| handle_connection(_stream)));
+            },
+            Err(ref e) if e.kind() == ErrorKind::WouldBlock => {
+                println!("WOULD BLOCK: {}", e);
+                // Decide if we should exit
+                if shutdown_trigger.load(Ordering::Relaxed) { break; }
+                // break;
+                // Decide if we should try to accept a connection again
+                thread::sleep(Duration::from())
+                continue;
+            }
+            Err(e) => panic!("encountered IO error: {}", e),
+        }
     }
     // Clean up threads (probably never actually runs, but it looks cute)
-    cleanup(&mut thread_handles);
+    stream_thread_handles.push(cli_thread_handle);
+    cleanup(&mut stream_thread_handles);
 }
