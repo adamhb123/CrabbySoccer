@@ -5,6 +5,8 @@ use std::collections::HashMap;
 
 pub type QueryPVMap = HashMap<String, Vec<String>>;
 
+pub const LF: u8 = 0x0A;
+
 #[derive(std::fmt::Debug, Clone)]
 pub struct Endpoint {
     pub uri: String,
@@ -42,7 +44,7 @@ impl Endpoint {
     }
     pub fn get_request_string(&self) -> String {
         let uri = self.get_valued_uri().unwrap();
-        format!("GET {} HTTP/1.1\nUser-Agent: crabbysoccer/1.0.0\nHost: temporarily-not-included\nAccept-Language: en\n\n", uri)
+        format!("GET {} HTTP/1.1\nUser-Agent: crabbysoccer/1.0.0\nHost: temporarily-not-included\nAccept-Language: en\n\n{}", uri, LF)
     }
 }
 impl From<Vec<String>> for Endpoint {

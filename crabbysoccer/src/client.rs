@@ -1,5 +1,6 @@
 use crate::requests;
 use std::collections::HashMap;
+use std::env::args;
 use std::io::{self, Write};
 use std::net::TcpStream;
 
@@ -25,6 +26,8 @@ fn print_help() {
 
 fn parse_input(buf: &str) -> Result<String, &str> {
     let mut argsplit: Vec<&str> = buf.split(" ").collect();
+    // Check if quitting
+    if argsplit[0].contains("quit") || argsplit[0] == "q" { return Err("Quitting application..."); }
     // Parse and verify endpoint
     let endpoint =
         if let Some(e) = requests::clone_authoritative_endpoint_by_uri(argsplit.remove(0)) {
@@ -99,8 +102,8 @@ pub fn run() {
         let request_string = match parse_input(&buf) {
             Ok(s) => s,
             Err(err) => {
-                println!("ERROR: {}", err);
-                continue;
+                println!("{}", err);
+                break;
             }
         };
         sock.write_all(request_string.as_bytes()).unwrap();

@@ -1,6 +1,6 @@
 use crate::{
     database,
-    requests::{Endpoint, QueryPVMap},
+    requests::{self, Endpoint, QueryPVMap},
 };
 use std::{
     collections::HashMap,
@@ -14,7 +14,10 @@ use std::{
     time::Duration,
 };
 
-fn parse_request(request: Vec<String>) -> Endpoint {
+fn parse_request(request: Vec<String>) -> Option<Endpoint> {
+    if request.is_empty() {
+        return None;
+    }
     let uri = (request[0].split(" ").collect::<Vec<&str>>()[1])[1..].to_owned();
     let (uri, query_param_str) = match uri.split_once("?") {
         Some(split) => split,
@@ -32,13 +35,13 @@ fn parse_request(request: Vec<String>) -> Endpoint {
     }
     let endpoint = Endpoint::new(uri, query_pv_map);
     println!("Parsed endpoint: {:#?}", endpoint);
-    endpoint
+    Some(endpoint)
 }
 
 fn respond(request: &Endpoint, db: &database::DB) {
-    if request.uri == "get-all-players" { // expected params: name
+    if request.uri == "get-all-players" { // optional params: name
     } else if request.uri == "get-player" {
-        // expected params: player_id, statistics
+        // optional params: player_id, statistics
         let (player_id, statistics) = (
             request.query_pv_map.get("player_id"),
             request.query_pv_map.get("statistics"),
@@ -60,32 +63,40 @@ fn respond(request: &Endpoint, db: &database::DB) {
     }
 }
 
-fn handle_connection(mut stream: TcpStream, shutdown_trigger: Arc<AtomicBool>) {
-    stream.set_nonblocking(true).expect("set_nonblocking call failed");
+fn handle_connection(stream: TcpStream, shutdown_trigger: Arc<AtomicBool>) {
+    stream.set_nonblocking(false).expect("set_nonblocking call failed");
     let peer_addr = stream.peer_addr().unwrap();
     let db = database::DB::new();
+    let mut buf_reader = BufReader::new(&stream);
     let mut buf: Vec<u8> = vec![];
-
     loop {
-        buf.clear();
-        match stream.read_to_end(&mut buf) {
-            Ok(_) => {
-                let http_request: Vec<String> = buf
-                    .lines()
-                    .map(core::result::Result::unwrap)
-                    .take_while(|line| !line.is_empty())
-                    .collect();
-                println!("[{}]: {:#?}", peer_addr, http_request);
-                let parsed = parse_request(http_request);
-                respond(&parsed, &db);
-            }
-            Err(ref e) if e.kind() == io::ErrorKind::WouldBlock => {
-                // wait until network socket is ready, typically implemented
-                // via platform-specific APIs such as epoll or IOCP
-                thread::sleep(Duration::from_millis(50))
-            }
-            Err(e) => panic!("encountered IO error: {e}"),
+        if shutdown_trigger.load(Ordering::Relaxed) {
+            println!("Dropping connection: {}", peer_addr);
+            break;
+        }
+        buf_reader.read_until(requests::LF, &mut buf).unwrap();
+        let http_request: Vec<String> =  buf.lines()
+            .take_while(|line| {
+                let line = line.as_ref().unwrap();
+                println!("{} is empty? {}", line, line.is_empty());
+                !line.is_empty()
+            })
+            .map(Result::unwrap)
+            .collect();
+        println!("[{}]: {:#?}", peer_addr, http_request);
+        let parsed = match parse_request(http_request) {
+            Some(ep) => ep,
+            None => break,
         };
+        respond(&parsed, &db);
+        /*Err(ref e) if e.kind() == io::ErrorKind::WouldBlock => {
+            if shutdown_trigger.load(Ordering::Relaxed) {
+                println!("Dropping connection: {}", peer_addr);
+                break;
+            }
+            thread::sleep(Duration::from_millis(50))
+        }
+        Err(e) => panic!("encountered IO error: {e}"),*/
     }
 }
 
@@ -94,7 +105,7 @@ fn cleanup(thread_handles: &mut Vec<JoinHandle<()>>) {
     while !thread_handles.is_empty() {
         thread_handles.pop().unwrap().join().unwrap();
     }
-    println!("Finished cleaning up thread handles")
+    println!("Finished cleaning up thread handles...goodbye!");
 }
 
 enum InputAction {
@@ -103,7 +114,7 @@ enum InputAction {
 
 fn parse_input(buf: &str) -> Option<InputAction> {
     let argsplit: Vec<String> = buf.split(" ").map(|e| e.trim().to_lowercase()).collect();
-    if argsplit[0].contains("quit") {
+    if argsplit[0].contains("quit") || argsplit[0] == "q" {
         Some(InputAction::Quit)
     } else {
         None
@@ -112,7 +123,6 @@ fn parse_input(buf: &str) -> Option<InputAction> {
 
 fn run_cli(shutdown_trigger: Arc<AtomicBool>) {
     let mut buf: String = String::new();
-
     loop {
         buf.clear();
         io::stdout().flush().unwrap();

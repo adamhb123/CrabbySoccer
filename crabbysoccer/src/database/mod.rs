@@ -1,5 +1,9 @@
-use sqlite::{self, Connection};
-use std::{collections::HashMap, fmt::Display, fs::read_to_string, path::Path};
+use itertools::Itertools;
+use rusqlite::{self, types::ValueRef, Connection, Rows};
+use core::slice::SlicePattern;
+use std::{
+    any::{Any, TypeId}, borrow::Borrow, collections::HashMap, fmt::{Debug, Display}, fs::read_to_string, io::Read, ops::Index, path::Path, str::FromStr
+};
 use strum::{EnumIter, IntoEnumIterator};
 
 trait TableNameTrait {
@@ -92,15 +96,32 @@ const CREATE_TABLE_QUERIES: [&'static str; 3] = [
 const JOIN_ALL: &str =
     "player JOIN statistics ON player.id = statistics.player_id JOIN position ON player.id = position.player_id";
 pub struct DB {
-    pub connection: sqlite::ConnectionThreadSafe,
+    pub connection: Connection,
 }
 impl DB {
     pub fn new() -> Self {
         Self {
-            connection: sqlite::Connection::open_thread_safe("soccer.db").unwrap(),
+            connection: Connection::open("soccer.db").unwrap(),
         }
     }
-    pub fn get_player(&self, player_id: Option<String>, statistics: Option<Vec<String>>) -> Result<(), sqlite::Error> {
+    fn rows_to_string<T: ToString>(column_names: &Vec<&T>, values: &Vec<Vec<T>>) -> String {
+        let column_names = column_names
+            .iter()
+            .map(|e| e.to_string())
+            .collect::<Vec<String>>()
+            .join("\t|\t");
+        let values = values
+            .iter()
+            .map(|e| e.iter().map(|e| e.to_string()).collect::<Vec<String>>().join("\t|\t"))
+            .collect::<Vec<String>>()
+            .join("\n");
+        format!("{}\n{}", column_names, values)
+    }
+    pub fn get_player(
+        &self,
+        player_id: Option<String>,
+        statistics: Option<Vec<String>>,
+    ) -> Result<String, rusqliteError> {
         let statistics_string = match statistics {
             Some(s) => {
                 let mut statistics = s;
@@ -125,7 +146,21 @@ impl DB {
         let statement =
             format!("SELECT player.id, position.name {statistics_string} FROM {JOIN_ALL} {where_pid_clause};");
         println!("Querying DB: {}", statement);
-        self.connection.execute(statement)
+        let mut statement = self.connection.prepare(&statement).unwrap();
+        let n_columns = statement.column_count();
+        let rows: = statement.query_map([], |r| 
+            Ok((0..n_columns).map(
+                |i: usize| match r.get_ref_unwrap(i) {
+                    ValueRef::Null => "".to_owned(),
+                    ValueRef::Integer(v) => v.to_string(),
+                    ValueRef::Real(v) => v.to_string(),
+                    ValueRef::Text(v) | ValueRef::Blob(v) => {
+                        String::from_utf8(v.to_vec()).unwrap()
+                    }
+                }
+            ).collect::<Vec<String>>())
+        ).un;
+        Ok(DB::rows_to_string(&statement.column_names(), &rows))
     }
 }
 
@@ -192,7 +227,7 @@ fn insert_all_into(
     table_name: TableName,
     attributes: &Vec<&(TableName, &str)>,
     data: &Vec<Vec<String>>,
-) -> Result<(), sqlite::Error> {
+) -> Result<(), rusqliteError> {
     // Get data_indices and respective attributes for table_name
     let (data_indices, attributes): (Vec<usize>, Vec<&(TableName, &str)>) =
         attributes.iter().enumerate().filter(|(_, e)| e.0 == table_name).unzip();
@@ -218,8 +253,10 @@ fn insert_all_into(
         TableName::Player => (),
         TableName::Statistics | TableName::Position => {
             attributes.push("player_id");
-            data.iter_mut().enumerate().for_each(|(i, e)| e.push(player_ids[i].to_owned()))
-        },
+            data.iter_mut()
+                .enumerate()
+                .for_each(|(i, e)| e.push(player_ids[i].to_owned()))
+        }
     }
 
     let values_string: String = data // Parse VALUES entries; Prepare for SQL statement
@@ -252,7 +289,6 @@ fn insert_all_into(
         .collect::<Vec<String>>()
         .join(",\n"); // Join each VALUES entry with comma-separator and newline
 
-    
     // Prepare final statement for execution
     let statement = format!(
         "INSERT INTO {}({}) VALUES {};",
@@ -265,7 +301,7 @@ fn insert_all_into(
 }
 
 pub fn debug_view_database() {
-    let connection = sqlite::open("soccer.db").unwrap();
+    let connection = rusqliteopen("soccer.db").unwrap();
     TableName::iter().for_each(|e| {
         connection
             .iterate(format!("SELECT * FROM {} LIMIT 10;", e), |pairs| {
@@ -338,7 +374,7 @@ pub fn csv_to_sqlite<'a>() {
         }
         Err(_) => (),
     }
-    let connection = sqlite::open("soccer.db").unwrap();
+    let connection = rusqliteopen("soccer.db").unwrap();
     println!("Creating database tables...");
     CREATE_TABLE_QUERIES.iter().for_each(|e| connection.execute(e).unwrap());
     println!("Inserting data from csv into db tables...");
@@ -347,7 +383,7 @@ pub fn csv_to_sqlite<'a>() {
         .map(|a| csv_to_db_attribute_map.get(a.as_str()).unwrap())
         .collect();
 
-    // TODO: Need to add foreign key constraints: 
+    // TODO: Need to add foreign key constraints:
     // statistics.player_id -> player.id
     // position.player_id -> player.id
     // In order to do this, perhaps add a "universal_data" Option arg to insert_all_into that applies regardless of table_name restriction
