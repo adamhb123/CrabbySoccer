@@ -1,10 +1,6 @@
-use itertools::Itertools;
-use rusqlite::{self, types::ValueRef, Connection, Rows};
-use core::slice::SlicePattern;
-use std::{
-    any::{Any, TypeId}, borrow::Borrow, collections::HashMap, fmt::{Debug, Display}, fs::read_to_string, io::Read, ops::Index, path::Path, str::FromStr
-};
-use strum::{EnumIter, IntoEnumIterator};
+use rusqlite::{self, types::ValueRef, Connection};
+use std::{collections::HashMap, fmt::Display, fs::read_to_string, path::Path};
+use strum::EnumIter;
 
 trait TableNameTrait {
     fn as_str(&self) -> &str;
@@ -104,7 +100,7 @@ impl DB {
             connection: Connection::open("soccer.db").unwrap(),
         }
     }
-    fn rows_to_string<T: ToString>(column_names: &Vec<&T>, values: &Vec<Vec<T>>) -> String {
+    fn rows_to_string<T: ToString, U: ToString>(column_names: &Vec<T>, values: &Vec<Vec<U>>) -> String {
         let column_names = column_names
             .iter()
             .map(|e| e.to_string())
@@ -121,7 +117,7 @@ impl DB {
         &self,
         player_id: Option<String>,
         statistics: Option<Vec<String>>,
-    ) -> Result<String, rusqliteError> {
+    ) -> Result<String, rusqlite::Error> {
         let statistics_string = match statistics {
             Some(s) => {
                 let mut statistics = s;
@@ -148,19 +144,22 @@ impl DB {
         println!("Querying DB: {}", statement);
         let mut statement = self.connection.prepare(&statement).unwrap();
         let n_columns = statement.column_count();
-        let rows: = statement.query_map([], |r| 
-            Ok((0..n_columns).map(
-                |i: usize| match r.get_ref_unwrap(i) {
-                    ValueRef::Null => "".to_owned(),
-                    ValueRef::Integer(v) => v.to_string(),
-                    ValueRef::Real(v) => v.to_string(),
-                    ValueRef::Text(v) | ValueRef::Blob(v) => {
-                        String::from_utf8(v.to_vec()).unwrap()
-                    }
-                }
-            ).collect::<Vec<String>>())
-        ).un;
-        Ok(DB::rows_to_string(&statement.column_names(), &rows))
+        let rows: Vec<Vec<String>> = statement
+            .query_map([], |r| {
+                Ok((0..n_columns)
+                    .map(|i: usize| match r.get_ref_unwrap(i) {
+                        ValueRef::Null => "".to_owned(),
+                        ValueRef::Integer(v) => v.to_string(),
+                        ValueRef::Real(v) => v.to_string(),
+                        ValueRef::Text(v) | ValueRef::Blob(v) => String::from_utf8(v.to_vec()).unwrap(),
+                    })
+                    .collect::<Vec<String>>())
+            })
+            .unwrap()
+            .map(Result::unwrap)
+            .collect();
+        let col_names: Vec<&str> = statement.column_names();
+        Ok(DB::rows_to_string(&col_names, &rows))
     }
 }
 
@@ -227,7 +226,7 @@ fn insert_all_into(
     table_name: TableName,
     attributes: &Vec<&(TableName, &str)>,
     data: &Vec<Vec<String>>,
-) -> Result<(), rusqliteError> {
+) -> Result<(), rusqlite::Error> {
     // Get data_indices and respective attributes for table_name
     let (data_indices, attributes): (Vec<usize>, Vec<&(TableName, &str)>) =
         attributes.iter().enumerate().filter(|(_, e)| e.0 == table_name).unzip();
@@ -297,21 +296,8 @@ fn insert_all_into(
         values_string
     );
     println!("statement: {}", statement);
-    connection.execute(statement)
-}
-
-pub fn debug_view_database() {
-    let connection = rusqliteopen("soccer.db").unwrap();
-    TableName::iter().for_each(|e| {
-        connection
-            .iterate(format!("SELECT * FROM {} LIMIT 10;", e), |pairs| {
-                for &(name, value) in pairs.iter() {
-                    println!("{}\t|\t{}", name, value.unwrap_or("none"))
-                }
-                true
-            })
-            .unwrap();
-    });
+    connection.execute(&statement, ()).unwrap();
+    Ok(())
 }
 
 pub fn csv_to_sqlite<'a>() {
@@ -374,9 +360,11 @@ pub fn csv_to_sqlite<'a>() {
         }
         Err(_) => (),
     }
-    let connection = rusqliteopen("soccer.db").unwrap();
+    let connection = Connection::open("soccer.db").unwrap();
     println!("Creating database tables...");
-    CREATE_TABLE_QUERIES.iter().for_each(|e| connection.execute(e).unwrap());
+    CREATE_TABLE_QUERIES.iter().for_each(|e| {
+        connection.execute(e, ()).unwrap();
+    });
     println!("Inserting data from csv into db tables...");
     let attributes: Vec<&(TableName, &str)> = header
         .iter()

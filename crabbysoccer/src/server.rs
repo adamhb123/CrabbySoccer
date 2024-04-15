@@ -4,7 +4,7 @@ use crate::{
 };
 use std::{
     collections::HashMap,
-    io::{self, BufRead, BufReader, ErrorKind, Read, Write},
+    io::{self, BufRead, BufReader, ErrorKind, Write},
     net::{TcpListener, TcpStream},
     sync::{
         atomic::{AtomicBool, Ordering},
@@ -59,7 +59,8 @@ fn respond(request: &Endpoint, db: &database::DB) {
             },
         );
 
-        db.get_player(player_id_arg, statistics_arg).unwrap();
+        let player = db.get_player(player_id_arg, statistics_arg).unwrap();
+        println!("get_player result: {}", player);
     }
 }
 

@@ -1,6 +1,5 @@
 use crate::requests;
 use std::collections::HashMap;
-use std::env::args;
 use std::io::{self, Write};
 use std::net::TcpStream;
 
@@ -39,6 +38,7 @@ fn parse_input(buf: &str) -> Result<String, &str> {
     // Parse and verify query parameters and associated values
     while !argsplit.is_empty() {
         let mut query_kv_split: Vec<&str> = argsplit.pop().unwrap().split("=").collect();
+        println!("Query_kv_split: {:?}", query_kv_split);
         if query_kv_split.len() != 2 {
             return Err("Malformed input (couldn't parse query parameter-value pair)");
         }
@@ -46,6 +46,7 @@ fn parse_input(buf: &str) -> Result<String, &str> {
         let param = query_kv_split.pop().unwrap();
         query_pv_map.insert(param, vals);
     }
+    println!("Query PV Map parse_args: {:?}", query_pv_map);
     Ok(endpoint.get_request_string())
 }
 
@@ -106,6 +107,7 @@ pub fn run() {
                 break;
             }
         };
+        println!("Parsed: {}", request_string);
         sock.write_all(request_string.as_bytes()).unwrap();
     }
 }
