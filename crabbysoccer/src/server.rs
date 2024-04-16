@@ -38,7 +38,7 @@ fn parse_request(request: Vec<String>) -> Option<Endpoint> {
     Some(endpoint)
 }
 
-fn respond(request: &Endpoint, db: &database::DB) {
+fn get_response_string(request: &Endpoint, db: &database::DB) -> Option<String> {
     if request.uri == "get-all-players" { // optional params: name
     } else if request.uri == "get-player" {
         // optional params: player_id, statistics
@@ -58,13 +58,14 @@ fn respond(request: &Endpoint, db: &database::DB) {
                 None
             },
         );
-
         let player = db.get_player(player_id_arg, statistics_arg).unwrap();
-        println!("get_player result: {}", player);
+        println!("get_player result: \n{}", player);
+        return Some(player);
     }
+    None
 }
 
-fn handle_connection(stream: TcpStream, shutdown_trigger: Arc<AtomicBool>) {
+fn handle_connection(mut stream: TcpStream, shutdown_trigger: Arc<AtomicBool>) {
     stream.set_nonblocking(false).expect("set_nonblocking call failed");
     let peer_addr = stream.peer_addr().unwrap();
     let db = database::DB::new();
@@ -75,8 +76,11 @@ fn handle_connection(stream: TcpStream, shutdown_trigger: Arc<AtomicBool>) {
             println!("Dropping connection: {}", peer_addr);
             break;
         }
-        buf_reader.read_until(requests::LF, &mut buf).unwrap();
-        let http_request: Vec<String> =  buf.lines()
+        buf.clear();
+        // Below should be converted to a non-blocking read in order to avoid hanging on server quit
+        buf_reader.read_until(requests::REQUEST_TERMINATOR, &mut buf).unwrap();
+        let http_request: Vec<String> = buf
+            .lines()
             .take_while(|line| {
                 let line = line.as_ref().unwrap();
                 println!("{} is empty? {}", line, line.is_empty());
@@ -89,7 +93,7 @@ fn handle_connection(stream: TcpStream, shutdown_trigger: Arc<AtomicBool>) {
             Some(ep) => ep,
             None => break,
         };
-        respond(&parsed, &db);
+        println!("RESPONSE:\n{}", get_response_string(&parsed, &db).unwrap());
         /*Err(ref e) if e.kind() == io::ErrorKind::WouldBlock => {
             if shutdown_trigger.load(Ordering::Relaxed) {
                 println!("Dropping connection: {}", peer_addr);
@@ -179,6 +183,7 @@ pub fn run(init_db: Option<bool>) {
             Err(e) => panic!("Encountered IO error: {}", e),
         }
     }
+    shutdown_trigger.store(true, Ordering::Relaxed);
     stream_thread_handles.push(cli_thread_handle);
     cleanup(&mut stream_thread_handles);
 }

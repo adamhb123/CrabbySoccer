@@ -91,6 +91,7 @@ const CREATE_TABLE_QUERIES: [&'static str; 3] = [
 
 const JOIN_ALL: &str =
     "player JOIN statistics ON player.id = statistics.player_id JOIN position ON player.id = position.player_id";
+
 pub struct DB {
     pub connection: Connection,
 }
@@ -140,7 +141,7 @@ impl DB {
             None => "".to_owned(),
         };
         let statement =
-            format!("SELECT player.id, position.name {statistics_string} FROM {JOIN_ALL} {where_pid_clause};");
+            format!("SELECT player.id, player.name, position.name as position {statistics_string} FROM {JOIN_ALL} {where_pid_clause};");
         println!("Querying DB: {}", statement);
         let mut statement = self.connection.prepare(&statement).unwrap();
         let n_columns = statement.column_count();

@@ -28,25 +28,26 @@ fn parse_input(buf: &str) -> Result<String, &str> {
     // Check if quitting
     if argsplit[0].contains("quit") || argsplit[0] == "q" { return Err("Quitting application..."); }
     // Parse and verify endpoint
-    let endpoint =
+    let mut endpoint =
         if let Some(e) = requests::clone_authoritative_endpoint_by_uri(argsplit.remove(0)) {
             e
         } else {
             return Err("No such Endpoint exists");
         };
-    let mut query_pv_map: HashMap<&str, Vec<&str>> = HashMap::new();
+    let mut query_pv_map: HashMap<String, Vec<String>> = HashMap::new();
     // Parse and verify query parameters and associated values
     while !argsplit.is_empty() {
-        let mut query_kv_split: Vec<&str> = argsplit.pop().unwrap().split("=").collect();
+        let mut query_kv_split: Vec<String> = argsplit.pop().unwrap().split("=").map(|e| e.to_owned()).collect();
         println!("Query_kv_split: {:?}", query_kv_split);
         if query_kv_split.len() != 2 {
             return Err("Malformed input (couldn't parse query parameter-value pair)");
         }
-        let vals: Vec<&str> = query_kv_split.pop().unwrap().split(",").collect();
+        let vals: Vec<String> = query_kv_split.pop().unwrap().split(",").map(|e| e.to_owned()).collect();
         let param = query_kv_split.pop().unwrap();
         query_pv_map.insert(param, vals);
     }
     println!("Query PV Map parse_args: {:?}", query_pv_map);
+    endpoint.query_pv_map = query_pv_map;
     Ok(endpoint.get_request_string())
 }
 
