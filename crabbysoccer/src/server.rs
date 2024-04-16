@@ -65,7 +65,7 @@ fn get_response_string(request: &Endpoint, db: &database::DB) -> Option<String> 
     None
 }
 
-fn handle_connection(mut stream: TcpStream, shutdown_trigger: Arc<AtomicBool>) {
+fn handle_connection(stream: TcpStream, shutdown_trigger: Arc<AtomicBool>) {
     stream.set_nonblocking(false).expect("set_nonblocking call failed");
     let peer_addr = stream.peer_addr().unwrap();
     let db = database::DB::new();

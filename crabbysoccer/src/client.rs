@@ -1,5 +1,6 @@
 use crate::requests;
 use std::collections::HashMap;
+use std::env::args;
 use std::io::{self, Write};
 use std::net::TcpStream;
 
@@ -24,7 +25,19 @@ fn print_help() {
 }
 
 fn parse_input(buf: &str) -> Result<String, &str> {
-    let mut argsplit: Vec<&str> = buf.split(" ").collect();
+    let mut argsplit: Vec<String> = buf.split(" ").map(|e| e.to_owned()).collect();
+    // Merge double-quote strings into single args
+    println!("ARGSPLIT before double quote parse");
+    let double_quote_args: Vec<(usize, &String)> = argsplit.iter().enumerate().filter(|(_,a)| a.starts_with("\"")).collect();
+    double_quote_args.iter().for_each(|(i,a)| {
+        let idx = *i;
+        let join_vec = vec![];
+        while !argsplit[idx].ends_with("\"") {
+            join_vec.push(argsplit.remove(idx));
+        }
+        argsplit.insert(idx, join_vec.join(" "));
+    });
+    println!("ARGSPLIT after double quote parse");
     // Check if quitting
     if argsplit[0].contains("quit") || argsplit[0] == "q" { return Err("Quitting application..."); }
     // Parse and verify endpoint

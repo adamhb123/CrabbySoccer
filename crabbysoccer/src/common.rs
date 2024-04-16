@@ -1,3 +1,4 @@
+#[allow(dead_code)]
 pub fn format_vec<T: ToString>(fmt_str: &str, args: &Vec<T>) -> String {
     let args: Vec<String> = args.iter().map(|e| e.to_string()).collect();
     let mut fmt_str = fmt_str.to_owned();
