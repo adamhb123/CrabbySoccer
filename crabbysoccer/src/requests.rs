@@ -14,7 +14,8 @@ pub struct Endpoint {
 }
 impl Endpoint {
     pub fn new<T: ToString>(uri: T, query_pv_map: QueryPVMap) -> Self {
-        Self { uri: uri.to_string(), query_pv_map }
+        let uri = uri.to_string().replace("+"," ");
+        Self { uri, query_pv_map }
     }
     fn new_authority<T: ToString>(uri: T, query_parameters: &[T]) -> Self {
         // Creates a new AUTHORITATIVE ENDPOINT:
@@ -42,6 +43,8 @@ impl Endpoint {
             }
         }
         formatted.pop().unwrap();
+        // Replace spaces with pluses and eliminate quotes
+        formatted = formatted.replace(" ", "+").replace("\"","");
         Ok(formatted)
     }
     pub fn get_request_string(&self) -> String {

@@ -114,6 +114,14 @@ impl DB {
             .join("\n");
         format!("{}\n{}", column_names, values)
     }
+
+pub fn get_all_players(&self, name: Option<String>) -> Result<String, rusqlite::Error> {
+    if let Some(name) = name {
+        
+    }
+
+} 
+
     pub fn get_player(
         &self,
         player_id: Option<String>,

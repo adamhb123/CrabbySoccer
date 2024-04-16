@@ -40,6 +40,10 @@ fn parse_request(request: Vec<String>) -> Option<Endpoint> {
 
 fn get_response_string(request: &Endpoint, db: &database::DB) -> Option<String> {
     if request.uri == "get-all-players" { // optional params: name
+        if let Some(name) = request.query_pv_map.get("name") {
+            let player = db.get_all_players(player_id_arg, statistics_arg).unwrap();
+        }
+
     } else if request.uri == "get-player" {
         // optional params: player_id, statistics
         let (player_id, statistics) = (
@@ -93,7 +97,11 @@ fn handle_connection(stream: TcpStream, shutdown_trigger: Arc<AtomicBool>) {
             Some(ep) => ep,
             None => break,
         };
-        println!("RESPONSE:\n{}", get_response_string(&parsed, &db).unwrap());
+        let response_string = match get_response_string(&parsed, &db) {
+            Some(rs) => rs,
+            None => "Failed to parse OR no response required".to_owned(),
+        };
+        println!("RESPONSE:\n{}", response_string);
         /*Err(ref e) if e.kind() == io::ErrorKind::WouldBlock => {
             if shutdown_trigger.load(Ordering::Relaxed) {
                 println!("Dropping connection: {}", peer_addr);

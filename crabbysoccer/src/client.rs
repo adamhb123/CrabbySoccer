@@ -27,21 +27,28 @@ fn parse_input(buf: &str) -> Result<String, &str> {
     let mut argsplit: Vec<String> = buf.split(" ").map(|e| e.to_owned()).collect();
     // Merge double-quote strings into single args
     println!("ARGSPLIT before double quote parse");
+    println!("{:?}", argsplit);
     let double_quote_args: Vec<(usize, String)> = argsplit
         .iter()
         .cloned()
         .enumerate()
-        .filter(|(_, a)| a.starts_with("\""))
+        .filter(|(_, a)| a.contains("\"") && !a.ends_with("\""))
         .collect();
+    println!("DQA {:?}", double_quote_args);
     double_quote_args.iter().for_each(|(i, _)| {
         let idx = *i;
         let mut join_vec = vec![];
-        while !argsplit[idx].ends_with("\"") {
-            join_vec.push(argsplit.remove(idx));
+        loop {
+            let val = argsplit.remove(idx);
+            join_vec.push(val.clone());
+            if val.ends_with("\"") { break; }
         }
+        println!("join_vec {:?}", join_vec);
         argsplit.insert(idx, join_vec.join(" "));
     });
     println!("ARGSPLIT after double quote parse");
+    println!("{:?}", argsplit);
+
     // Check if quitting
     if argsplit[0].contains("quit") || argsplit[0] == "q" {
         return Err("Quitting application...");
