@@ -1,6 +1,5 @@
 use crate::requests;
 use std::collections::HashMap;
-use std::env::args;
 use std::io::{self, Write};
 use std::net::TcpStream;
 
@@ -28,10 +27,15 @@ fn parse_input(buf: &str) -> Result<String, &str> {
     let mut argsplit: Vec<String> = buf.split(" ").map(|e| e.to_owned()).collect();
     // Merge double-quote strings into single args
     println!("ARGSPLIT before double quote parse");
-    let double_quote_args: Vec<(usize, &String)> = argsplit.iter().enumerate().filter(|(_,a)| a.starts_with("\"")).collect();
-    double_quote_args.iter().for_each(|(i,a)| {
+    let double_quote_args: Vec<(usize, String)> = argsplit
+        .iter()
+        .cloned()
+        .enumerate()
+        .filter(|(_, a)| a.starts_with("\""))
+        .collect();
+    double_quote_args.iter().for_each(|(i, _)| {
         let idx = *i;
-        let join_vec = vec![];
+        let mut join_vec = vec![];
         while !argsplit[idx].ends_with("\"") {
             join_vec.push(argsplit.remove(idx));
         }
@@ -39,14 +43,15 @@ fn parse_input(buf: &str) -> Result<String, &str> {
     });
     println!("ARGSPLIT after double quote parse");
     // Check if quitting
-    if argsplit[0].contains("quit") || argsplit[0] == "q" { return Err("Quitting application..."); }
+    if argsplit[0].contains("quit") || argsplit[0] == "q" {
+        return Err("Quitting application...");
+    }
     // Parse and verify endpoint
-    let mut endpoint =
-        if let Some(e) = requests::clone_authoritative_endpoint_by_uri(argsplit.remove(0)) {
-            e
-        } else {
-            return Err("No such Endpoint exists");
-        };
+    let mut endpoint = if let Some(e) = requests::clone_authoritative_endpoint_by_uri(argsplit.remove(0).as_str()) {
+        e
+    } else {
+        return Err("No such Endpoint exists");
+    };
     let mut query_pv_map: HashMap<String, Vec<String>> = HashMap::new();
     // Parse and verify query parameters and associated values
     while !argsplit.is_empty() {
@@ -73,7 +78,7 @@ fn try_connect() -> TcpStream {
             Ok(s) => {
                 let peer_addr = match s.peer_addr() {
                     Ok(addr) => addr.to_string(),
-                    Err(_) => "[ERROR] UNABLE TO RETREIVE SERVER ADDRESS".to_owned()
+                    Err(_) => "[ERROR] UNABLE TO RETREIVE SERVER ADDRESS".to_owned(),
                 };
                 println!("Connection established with {}", peer_addr);
                 s
@@ -84,7 +89,9 @@ fn try_connect() -> TcpStream {
                 if error_timeout.as_millis() < CONNECT_MAX_ERROR_TIMEOUT_MS {
                     error_timeout = error_timeout.mul_f64(1.1);
                 }
-                if error_timeout.as_millis() > CONNECT_MAX_ERROR_TIMEOUT_MS { error_timeout = std::time::Duration::from_millis(5000); }
+                if error_timeout.as_millis() > CONNECT_MAX_ERROR_TIMEOUT_MS {
+                    error_timeout = std::time::Duration::from_millis(5000);
+                }
                 println!("\t! Retrying in {} ms...", error_timeout.as_millis());
                 std::thread::sleep(error_timeout);
                 if attempts > CONNECT_MAX_TRIES {
@@ -107,7 +114,7 @@ pub fn run() {
     let mut sock = try_connect();
     print_help();
     let mut buf: String = String::new();
-    
+
     loop {
         buf.clear();
         print!("$ ");
