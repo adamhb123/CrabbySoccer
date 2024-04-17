@@ -1,12 +1,13 @@
 use crate::requests;
+use queue::Queue;
 use std::collections::HashMap;
 use std::io::{self, Write};
 use std::net::TcpStream;
 use std::str::Bytes;
-use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::{Arc, Mutex};
 use std::thread;
-use queue::Queue;
+use std::time::Duration;
 
 const SERVER_ADDR: &str = "127.0.0.1:7878";
 const CONNECT_INIT_ERROR_TIMEOUT_MS: u64 = 1000;
@@ -46,7 +47,9 @@ fn parse_input(buf: &str) -> Result<String, &str> {
         loop {
             let val = argsplit.remove(idx);
             join_vec.push(val.clone());
-            if val.ends_with("\"") { break; }
+            if val.ends_with("\"") {
+                break;
+            }
         }
         println!("join_vec {:?}", join_vec);
         argsplit.insert(idx, join_vec.join(" "));
@@ -121,44 +124,64 @@ fn _assertion_checks() {
     assert!((CONNECT_INIT_ERROR_TIMEOUT_MS as u128) < CONNECT_MAX_ERROR_TIMEOUT_MS);
 }
 
-fn handle_stream(mut stream: TcpStream, mut input_queue: Arc<Queue<&[u8]>>) {
+fn handle_stream(mut stream: TcpStream, send_queue: Arc<Mutex<Queue<String>>>, receive_queue: Arc<Mutex<Queue<String>>>) {
     stream.set_nonblocking(true).expect("Failed to set stream nonblocking");
     loop {
         // if shutdown_trigger.load(Ordering::Relaxed) {
         //     break;
         // }
-        while !input_queue.is_empty(){
-            if let Some(request_bytes) = input_queue.dequeue(){
-                stream.write_all(request_bytes);
+        // Handle 
+        // Note: Mutex unlocks when MutexGuard (iq_locked, here) goes out of scope or gets manually drop()-ed
+        let mut send_q_locked = send_queue.lock().unwrap();
+        while !send_q_locked.is_empty() {
+            if let Some(request_bytes) = send_q_locked.dequeue() {
+                stream.write_all(request_bytes.as_bytes()).unwrap();
             }
         }
+        // Unlock send_queue by dropping MutexGuard iq_locked
+        // drop(iq_locked);
+        // Allow other parties to modify send_queue
+        // thread::sleep(Duration::from_millis(50));
     }
 }
 
-
-
 pub fn run() {
     _assertion_checks();
-    let input_queue: Arc<Queue<Bytes>> = Arc::new(Queue::new());
-    let input_queue_stream_handler: Arc<Queue<Bytes>> = input_queue.clone();
-    let stream_handler = thread::spawn(|| handle_stream(try_connect(), input_queue_stream_handler));
+    let exit_trigger = Arc::new(AtomicBool::new(false));
+    let ctrl_c_exit_trigger: Arc<AtomicBool> = exit_trigger.clone();
+    ctrlc::set_handler(move || {
+        println!("Ctrl-C event triggered");
+        ctrl_c_exit_trigger.store(true, Ordering::SeqCst);
+    }).expect("Error setting Ctrl-C handler");
+    let send_queue: Arc<Mutex<Queue<String>>> = Arc::new(Mutex::new(Queue::new()));
+    let send_queue_stream_handler: Arc<Mutex<Queue<String>>> = send_queue.clone();
+    let receive_queue: Arc<Mutex<Queue<String>>> = Arc::new(Mutex::new(Queue::new()));
+    let receive_queue_stream_handler: Arc<Mutex<Queue<String>>> = receive_queue.clone();
+
+    let stream_handler = thread::spawn(|| handle_stream(try_connect(), send_queue_stream_handler, receive_queue_stream_handler));
     print_help();
     let mut buf: String = String::new();
     loop {
+        if exit_trigger.load(Ordering::SeqCst) {
+            break;
+        }
         buf.clear();
         print!("$ ");
         io::stdout().flush().unwrap();
         io::stdin().read_line(&mut buf).unwrap();
         let buf = buf.trim();
-        let request_string = match parse_input(&buf) {
-            Ok(s) => s,
-            Err(err) => {
-                println!("{}", err);
-                break;
-            }
-        };
-        println!("Parsed: {}", request_string);
-        sock.write_all(request_string.as_bytes()).unwrap();
+        
+        if let Ok(mut iq_locked) = send_queue.lock() {
+            let request_string = match parse_input(&buf) {
+                Ok(s) => s,
+                Err(err) => {
+                    println!("[ERROR] {}", err);
+                    continue;
+                }
+            };
+            iq_locked.queue(request_string).unwrap();
+        }
     }
+    println!("Loop exited");
     stream_handler.join().unwrap();
 }
