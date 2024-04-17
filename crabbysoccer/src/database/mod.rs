@@ -1,4 +1,4 @@
-use rusqlite::{self, types::ValueRef, Connection};
+use rusqlite::{self, types::ValueRef, Connection, Row, Statement};
 use std::{collections::HashMap, fmt::Display, fs::read_to_string, path::Path};
 use strum::EnumIter;
 
@@ -101,7 +101,7 @@ impl DB {
             connection: Connection::open("soccer.db").unwrap(),
         }
     }
-    fn rows_to_string<T: ToString, U: ToString>(column_names: &Vec<T>, values: &Vec<Vec<U>>) -> String {
+    fn parsed_rows_to_string<T: ToString, U: ToString>(column_names: &Vec<T>, values: &Vec<Vec<U>>) -> String {
         let column_names = column_names
             .iter()
             .map(|e| e.to_string())
@@ -115,12 +115,39 @@ impl DB {
         format!("{}\n{}", column_names, values)
     }
 
-pub fn get_all_players(&self, name: Option<String>) -> Result<String, rusqlite::Error> {
-    if let Some(name) = name {
-        
+    fn row_to_vec_string(n_columns: &usize, row: &Row) -> Vec<String> {
+        (0..*n_columns)
+            .map(|i: usize| match row.get_ref_unwrap(i) {
+                ValueRef::Null => "".to_owned(),
+                ValueRef::Integer(v) => v.to_string(),
+                ValueRef::Real(v) => v.to_string(),
+                ValueRef::Text(v) | ValueRef::Blob(v) => String::from_utf8(v.to_vec()).unwrap(),
+            })
+            .collect::<Vec<String>>()
     }
 
-} 
+    fn rows_as_2d_vec_string(statement: &mut Statement) -> Vec<Vec<String>>{
+        let n_columns = statement.column_count();
+        statement.query_map([], |row| Ok(DB::row_to_vec_string(&n_columns, row))).unwrap().map(Result::unwrap).collect()
+    }
+
+    fn rows_to_string(statement: &mut Statement) -> String {
+        let rows: Vec<Vec<String>> = DB::rows_as_2d_vec_string(statement);
+        let col_names: Vec<&str> = statement.column_names();
+        DB::parsed_rows_to_string(&col_names, &rows)
+    }
+
+    pub fn get_all_players(&self, name: Option<String>) -> Result<String, rusqlite::Error> {
+        // -> Result<String, rusqlite::Error> {
+        let mut statement: Statement;
+        if let Some(_name) = name {
+            let sql = format!("SELECT * FROM player WHERE player.name LIKE \"%{}%\"", _name);
+            statement = self.connection.prepare(&sql).unwrap();
+        } else {
+            statement = self.connection.prepare("SELECT * FROM player").unwrap();
+        }
+        Ok(DB::rows_to_string(&mut statement))
+    }
 
     pub fn get_player(
         &self,
@@ -148,27 +175,11 @@ pub fn get_all_players(&self, name: Option<String>) -> Result<String, rusqlite::
             Some(id) => format!("WHERE player.id = {id}"),
             None => "".to_owned(),
         };
-        let statement =
+        let sql =
             format!("SELECT player.id, player.name, position.name as position {statistics_string} FROM {JOIN_ALL} {where_pid_clause};");
-        println!("Querying DB: {}", statement);
-        let mut statement = self.connection.prepare(&statement).unwrap();
-        let n_columns = statement.column_count();
-        let rows: Vec<Vec<String>> = statement
-            .query_map([], |r| {
-                Ok((0..n_columns)
-                    .map(|i: usize| match r.get_ref_unwrap(i) {
-                        ValueRef::Null => "".to_owned(),
-                        ValueRef::Integer(v) => v.to_string(),
-                        ValueRef::Real(v) => v.to_string(),
-                        ValueRef::Text(v) | ValueRef::Blob(v) => String::from_utf8(v.to_vec()).unwrap(),
-                    })
-                    .collect::<Vec<String>>())
-            })
-            .unwrap()
-            .map(Result::unwrap)
-            .collect();
-        let col_names: Vec<&str> = statement.column_names();
-        Ok(DB::rows_to_string(&col_names, &rows))
+        println!("Querying DB: {}", sql);
+        let mut statement = self.connection.prepare(&sql).unwrap();
+        Ok(DB::rows_to_string(&mut statement))
     }
 }
 

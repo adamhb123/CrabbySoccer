@@ -40,10 +40,12 @@ fn parse_request(request: Vec<String>) -> Option<Endpoint> {
 
 fn get_response_string(request: &Endpoint, db: &database::DB) -> Option<String> {
     if request.uri == "get-all-players" { // optional params: name
-        if let Some(name) = request.query_pv_map.get("name") {
-            let player = db.get_all_players(player_id_arg, statistics_arg).unwrap();
-        }
-
+        return Some(if let Some(name) = request.query_pv_map.get("name") {
+            let name = if name.len() == 1 { Some(name[0].clone()) } else { None };
+            db.get_all_players(name).unwrap()
+        } else {
+            db.get_all_players(None).unwrap()
+        });
     } else if request.uri == "get-player" {
         // optional params: player_id, statistics
         let (player_id, statistics) = (
