@@ -5,6 +5,7 @@ use strum::EnumIter;
 trait TableNameTrait {
     fn as_str(&self) -> &str;
 }
+
 #[derive(PartialEq, Eq, EnumIter)]
 enum TableName {
     Player,

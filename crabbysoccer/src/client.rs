@@ -2,6 +2,11 @@ use crate::requests;
 use std::collections::HashMap;
 use std::io::{self, Write};
 use std::net::TcpStream;
+use std::str::Bytes;
+use std::sync::Arc;
+use std::sync::atomic::{AtomicBool, Ordering};
+use std::thread;
+use queue::Queue;
 
 const SERVER_ADDR: &str = "127.0.0.1:7878";
 const CONNECT_INIT_ERROR_TIMEOUT_MS: u64 = 1000;
@@ -116,12 +121,29 @@ fn _assertion_checks() {
     assert!((CONNECT_INIT_ERROR_TIMEOUT_MS as u128) < CONNECT_MAX_ERROR_TIMEOUT_MS);
 }
 
+fn handle_stream(mut stream: TcpStream, mut input_queue: Arc<Queue<&[u8]>>) {
+    stream.set_nonblocking(true).expect("Failed to set stream nonblocking");
+    loop {
+        // if shutdown_trigger.load(Ordering::Relaxed) {
+        //     break;
+        // }
+        while !input_queue.is_empty(){
+            if let Some(request_bytes) = input_queue.dequeue(){
+                stream.write_all(request_bytes);
+            }
+        }
+    }
+}
+
+
+
 pub fn run() {
     _assertion_checks();
-    let mut sock = try_connect();
+    let input_queue: Arc<Queue<Bytes>> = Arc::new(Queue::new());
+    let input_queue_stream_handler: Arc<Queue<Bytes>> = input_queue.clone();
+    let stream_handler = thread::spawn(|| handle_stream(try_connect(), input_queue_stream_handler));
     print_help();
     let mut buf: String = String::new();
-
     loop {
         buf.clear();
         print!("$ ");
@@ -138,4 +160,5 @@ pub fn run() {
         println!("Parsed: {}", request_string);
         sock.write_all(request_string.as_bytes()).unwrap();
     }
+    stream_handler.join().unwrap();
 }

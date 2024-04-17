@@ -104,6 +104,7 @@ fn handle_connection(stream: TcpStream, shutdown_trigger: Arc<AtomicBool>) {
             None => "Failed to parse OR no response required".to_owned(),
         };
         println!("RESPONSE:\n{}", response_string);
+        (&stream).write_all(response_string.as_bytes()).unwrap();
         /*Err(ref e) if e.kind() == io::ErrorKind::WouldBlock => {
             if shutdown_trigger.load(Ordering::Relaxed) {
                 println!("Dropping connection: {}", peer_addr);
@@ -161,10 +162,10 @@ pub fn run(init_db: Option<bool>) {
     // Define events
     let shutdown_trigger = Arc::new(AtomicBool::new(false));
     let cli_shutdown_trigger = shutdown_trigger.clone();
-
-    if init_db.is_some_and(|b| b) {
-        println!("Database initialization requested");
-        println!("Running initialization (conversion of 'soccer.csv' -> 'soccer.db'");
+    let _path = std::path::Path::new("soccer.db");
+    if init_db.is_some_and(|b| b) || !_path.exists() {
+        println!("Database initializating...");
+        println!("Running initialization (conversion of 'soccer.csv' -> 'soccer.db'...");
         database::csv_to_sqlite();
     }
     println!("Starting server...");
