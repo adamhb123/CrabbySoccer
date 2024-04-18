@@ -1,5 +1,5 @@
 use crate::{
-    common::{self, InputAction, INPUT_ACTION_PARSE_DEFS},
+    common::{self, InputAction},
     requests,
 };
 use queue::Queue;
@@ -30,7 +30,7 @@ fn print_help() {
     println!("{_HELP_MSG}");
 }
 
-fn parse_input(buf: &str) -> Result<String, &str> {
+fn parse_input<'a>(buf: &'a str, shutdown_trigger: &'a Arc<AtomicBool>) -> Result<String, &'a str> {
     let mut argsplit: Vec<String> = buf.split(' ').map(|e| e.to_owned()).collect();
     // Merge double-quote strings into single args
     println!("ARGSPLIT before double quote parse");
@@ -61,8 +61,11 @@ fn parse_input(buf: &str) -> Result<String, &str> {
     // Check for CLI input actions
     if let Some(action) = common::parse_input_action(&argsplit) {
         match action {
-            InputAction::Quit => {}
-            InputAction::ListConnections => todo!(),
+            InputAction::Quit => {
+                shutdown_trigger.store(true, Ordering::Relaxed);
+                return Err("Shutdown requested");
+            }
+            InputAction::ListConnections => (),
         }
     }
     // Parse and verify endpoint
@@ -157,8 +160,16 @@ fn handle_stream(
         {
             receive_buf.clear();
             let mut receive_q_locked = receive_queue.lock().unwrap();
-            if stream.read_to_string(&mut receive_buf).is_ok() {
-                receive_q_locked.queue(receive_buf.clone()).unwrap();
+            match stream.read_to_string(&mut receive_buf) {
+                Ok(len) => {
+                    if len == 0 {
+                        println!("Detected stream dropped!");
+                        shutdown_trigger.store(true, Ordering::Relaxed);
+                        return;
+                    }
+                    receive_q_locked.queue(receive_buf.clone()).unwrap();
+                }
+                Err(err) => {}
             }
         }
     }
@@ -204,7 +215,7 @@ pub fn run() {
         let buf = buf.trim();
 
         if let Ok(mut send_q_locked) = send_queue.lock() {
-            let request_string = match parse_input(buf) {
+            let request_string = match parse_input(buf, &shutdown_trigger) {
                 Ok(s) => s,
                 Err(err) => {
                     println!("[ERROR] {}", err);
@@ -220,6 +231,6 @@ pub fn run() {
             }
         }
     }
-    println!("Loop exited");
+    println!("Cleaning up stream handler");
     stream_handler.join().unwrap();
 }

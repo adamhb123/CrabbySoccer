@@ -1,5 +1,8 @@
+use crabbylib::println_around_input;
+use queue::Queue;
+
 use crate::{
-    common::{self, InputAction, INPUT_ACTION_PARSE_DEFS},
+    common::{self, InputAction},
     database,
     requests::{self, Endpoint, QueryPVMap},
 };
@@ -9,11 +12,41 @@ use std::{
     net::{TcpListener, TcpStream},
     sync::{
         atomic::{AtomicBool, Ordering},
-        Arc, RwLock,
+        Arc, Mutex, RwLock,
     },
     thread::{self, JoinHandle},
     time::Duration,
 };
+
+struct Connection {
+    stream: TcpStream,
+    _shutdown_trigger: Arc<AtomicBool>,
+    _handle: Option<JoinHandle<()>>,
+}
+impl Connection {
+    fn new(stream: TcpStream) -> Self {
+        Connection {
+            stream,
+            _shutdown_trigger: Arc::new(AtomicBool::new(false)),
+            _handle: None,
+        }
+    }
+
+    fn get_name(&self) -> &String {
+        &self.stream.peer_addr().unwrap().to_string()
+    }
+
+    fn start_thread(&mut self) {
+        self._handle = Some(thread::spawn(|| loop {
+            if self._shutdown_trigger.load(Ordering::Relaxed) {
+                break;
+            }
+        }));
+    }
+    fn shutdown(&mut self) {
+        self._shutdown_trigger.store(true, Ordering::Relaxed)
+    }
+}
 
 fn parse_request(request: Vec<String>) -> Option<Endpoint> {
     if request.is_empty() {
@@ -72,7 +105,11 @@ fn get_response_string(request: &Endpoint, db: &database::DB) -> Option<String> 
     None
 }
 
-fn handle_connection(stream: TcpStream, shutdown_trigger: Arc<AtomicBool>) {
+fn handle_connection(
+    stream: TcpStream,
+    shutdown_trigger: Arc<AtomicBool>,
+    drop_connection_queue: Arc<Mutex<Queue<String>>>,
+) {
     stream.set_nonblocking(false).expect("set_nonblocking call failed");
     let peer_addr = stream.peer_addr().unwrap();
     let db = database::DB::new();
@@ -85,7 +122,16 @@ fn handle_connection(stream: TcpStream, shutdown_trigger: Arc<AtomicBool>) {
         }
         buf.clear();
         // Below should be converted to a non-blocking read in order to avoid hanging on server quit
-        buf_reader.read_until(requests::REQUEST_TERMINATOR, &mut buf).unwrap();
+        match buf_reader.read_until(requests::REQUEST_TERMINATOR, &mut buf) {
+            Ok(len) => {
+                println!("BUFREAD LEN: {}", len);
+                if len == 0 {
+                    println!("Connection {} dropped!", stream.peer_addr().unwrap());
+                    break;
+                }
+            }
+            Err(_) => todo!(),
+        }
         let http_request: Vec<String> = buf
             .lines()
             .take_while(|line| {
@@ -117,9 +163,9 @@ fn handle_connection(stream: TcpStream, shutdown_trigger: Arc<AtomicBool>) {
     }
 }
 
-fn cleanup(thread_handles: &mut Vec<(Option<String>, JoinHandle<()>)>) {
+fn cleanup(thread_handles: Arc<RwLock<Vec<(Option<String>, JoinHandle<()>)>>>) {
     println!("Cleaning up thread handles...");
-    while let Some((name, handle)) = thread_handles.pop() {
+    while let Some((name, handle)) = thread_handles.write().unwrap().pop() {
         let name = name.unwrap_or("UNKNOWN".to_owned());
         println!("Cleaning up connection: {}", name);
         handle.join().unwrap();
@@ -159,11 +205,11 @@ pub fn run(init_db: Option<bool>) {
     // Define events
     let shutdown_trigger = Arc::new(AtomicBool::new(false));
     let cli_shutdown_trigger: Arc<AtomicBool> = shutdown_trigger.clone();
-    let ctrlc_shutdown_triger: Arc<AtomicBool> = shutdown_trigger.clone();
+    let ctrlc_shutdown_trigger: Arc<AtomicBool> = shutdown_trigger.clone();
     ctrlc::set_handler(move || {
-        if !ctrlc_shutdown_triger.load(Ordering::SeqCst) {
+        if !ctrlc_shutdown_trigger.load(Ordering::SeqCst) {
             println!("Ctrl-C detected...press ENTER to exit");
-            ctrlc_shutdown_triger.store(true, Ordering::SeqCst);
+            ctrlc_shutdown_trigger.store(true, Ordering::SeqCst);
         }
     })
     .unwrap();
@@ -176,24 +222,23 @@ pub fn run(init_db: Option<bool>) {
     println!("Starting server...");
     let listener = TcpListener::bind("127.0.0.1:7878").unwrap();
     listener.set_nonblocking(true).expect("Cannot set non-blocking");
-    let mut stream_thread_handles: Vec<(Option<String>, JoinHandle<()>)> = vec![];
+    let stream_thread_handles: Arc<RwLock<Vec<(Option<String>, JoinHandle<()>)>>> = Arc::new(RwLock::new(vec![]));
     println!("Server started successfully!");
 
-    let connection_names: Arc<RwLock<Vec<String>>> = Arc::new(RwLock::new(vec![]));
-    let connection_names_cli: Arc<RwLock<Vec<String>>> = connection_names.clone();
     // Initialize Server CLI IO
     let cli_thread_handle = thread::spawn(|| run_cli(cli_shutdown_trigger, connection_names_cli));
     // Connection listener loop
     for stream in listener.incoming() {
         match stream {
-            Ok(_stream) => {
-                let peer_addr: String = _stream.peer_addr().unwrap().to_string();
-                println!("Incoming connection from: {}", peer_addr);
+            Ok(stream) => {
+                let connection = Connection::new(stream);
+                println_around_input!("Incoming connection from: {}", connection.get_name());
                 connection_names.write().unwrap().push(peer_addr);
                 let stream_shutdown = shutdown_trigger.clone();
-                stream_thread_handles.push((
+                let stream_drop_connection_queue = drop_connection_queue.clone();
+                stream_thread_handles.write().unwrap().push((
                     Some(_stream.peer_addr().unwrap().clone().to_string()),
-                    thread::spawn(|| handle_connection(_stream, stream_shutdown)),
+                    thread::spawn(|| handle_connection(_stream, stream_shutdown, stream_drop_connection_queue)),
                 ));
             }
             Err(ref e) if e.kind() == ErrorKind::WouldBlock => {
@@ -210,5 +255,5 @@ pub fn run(init_db: Option<bool>) {
     }
     shutdown_trigger.store(true, Ordering::Relaxed);
     stream_thread_handles.push((Some("CLI".to_owned()), cli_thread_handle));
-    cleanup(&mut stream_thread_handles);
+    cleanup(&mut Arc::new(RwLock::new(vec![])));
 }

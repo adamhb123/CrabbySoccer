@@ -1,0 +1,17 @@
+[package]
+name = "sandbox"
+version = "0.1.0"
+edition = "2021"
+
+# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+
+[dependencies]
+
+[lib]
+name = "sandboxlib"
+path = "./src/lib.rs"
+proc-macro = true
+
+[[bin]]
+name = "sandbox"
+path = "./src/main.rs"
