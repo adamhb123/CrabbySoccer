@@ -28,26 +28,26 @@ fn test_common() {
                 8. "a{}a{}a"
     */
     // 1. Plain placeholders only
-    assert_eq!(common::format_vec("{}", &vec![0]), "0");
-    assert_eq!(common::format_vec("a{}", &vec![0]), "a0");
-    assert_eq!(common::format_vec("{}a", &vec![0]), "0a");
-    assert_eq!(common::format_vec("{}{}", &vec![0, 1]), "01");
-    assert_eq!(common::format_vec("a{}{}", &vec![0, 1]), "a01");
-    assert_eq!(common::format_vec("{}a{}", &vec![0, 1]), "0a1");
-    assert_eq!(common::format_vec("{}{}a", &vec![0, 1]), "01a");
-    assert_eq!(common::format_vec("a{}a{}", &vec![0, 1]), "a0a1");
-    assert_eq!(common::format_vec("{}a{}a", &vec![0, 1]), "0a1a");
-    assert_eq!(common::format_vec("a{}a{}a", &vec![0, 1]), "a0a1a");
+    assert_eq!(common::format_vec("{}", &[0]), "0");
+    assert_eq!(common::format_vec("a{}", &[0]), "a0");
+    assert_eq!(common::format_vec("{}a", &[0]), "0a");
+    assert_eq!(common::format_vec("{}{}", &[0, 1]), "01");
+    assert_eq!(common::format_vec("a{}{}", &[0, 1]), "a01");
+    assert_eq!(common::format_vec("{}a{}", &[0, 1]), "0a1");
+    assert_eq!(common::format_vec("{}{}a", &[0, 1]), "01a");
+    assert_eq!(common::format_vec("a{}a{}", &[0, 1]), "a0a1");
+    assert_eq!(common::format_vec("{}a{}a", &[0, 1]), "0a1a");
+    assert_eq!(common::format_vec("a{}a{}a", &[0, 1]), "a0a1a");
     // Index-based placeholders only
-    assert_eq!(common::format_vec("{0}", &vec![0]), "0");
-    assert_eq!(common::format_vec("a{0}", &vec![0]), "a0");
-    assert_eq!(common::format_vec("{0}a", &vec![0]), "0a");
-    assert_eq!(common::format_vec("{0}{1}", &vec![0, 1]), "01");
-    assert_eq!(common::format_vec("a{0}{1}", &vec![0, 1]), "a01");
-    assert_eq!(common::format_vec("{0}a{1}", &vec![0, 1]), "0a1");
-    assert_eq!(common::format_vec("{0}{1}a", &vec![0, 1]), "01a");
-    assert_eq!(common::format_vec("a{0}a{1}", &vec![0, 1]), "a0a1");
-    assert_eq!(common::format_vec("{0}a{1}a", &vec![0, 1]), "0a1a");
-    assert_eq!(common::format_vec("a{0}a{1}a", &vec![0, 1]), "a0a1a");
+    assert_eq!(common::format_vec("{0}", &[0]), "0");
+    assert_eq!(common::format_vec("a{0}", &[0]), "a0");
+    assert_eq!(common::format_vec("{0}a", &[0]), "0a");
+    assert_eq!(common::format_vec("{0}{1}", &[0, 1]), "01");
+    assert_eq!(common::format_vec("a{0}{1}", &[0, 1]), "a01");
+    assert_eq!(common::format_vec("{0}a{1}", &[0, 1]), "0a1");
+    assert_eq!(common::format_vec("{0}{1}a", &[0, 1]), "01a");
+    assert_eq!(common::format_vec("a{0}a{1}", &[0, 1]), "a0a1");
+    assert_eq!(common::format_vec("{0}a{1}a", &[0, 1]), "0a1a");
+    assert_eq!(common::format_vec("a{0}a{1}a", &[0, 1]), "a0a1a");
     /* Incorrect usage */
 }

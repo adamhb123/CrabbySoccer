@@ -1,20 +1,18 @@
 use crate::requests;
 use queue::Queue;
 use std::collections::HashMap;
-use std::io::{self, Write};
+use std::io::{self, Read, Write};
 use std::net::TcpStream;
-use std::str::Bytes;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex};
 use std::thread;
-use std::time::Duration;
 
 const SERVER_ADDR: &str = "127.0.0.1:7878";
 const CONNECT_INIT_ERROR_TIMEOUT_MS: u64 = 1000;
 const CONNECT_MAX_ERROR_TIMEOUT_MS: u128 = 5000;
 const CONNECT_MAX_TRIES: u8 = 10;
 
-const _HELP_MSG: &'static str = "
+const _HELP_MSG: &str = "
  ----------------------------------------------------------------------
 | CrabbySoccer Client CLI                                              |
  ----------------------------------------------------------------------
@@ -30,7 +28,7 @@ fn print_help() {
 }
 
 fn parse_input(buf: &str) -> Result<String, &str> {
-    let mut argsplit: Vec<String> = buf.split(" ").map(|e| e.to_owned()).collect();
+    let mut argsplit: Vec<String> = buf.split(' ').map(|e| e.to_owned()).collect();
     // Merge double-quote strings into single args
     println!("ARGSPLIT before double quote parse");
     println!("{:?}", argsplit);
@@ -38,7 +36,7 @@ fn parse_input(buf: &str) -> Result<String, &str> {
         .iter()
         .cloned()
         .enumerate()
-        .filter(|(_, a)| a.contains("\"") && !a.ends_with("\""))
+        .filter(|(_, a)| a.contains('\"') && !a.ends_with('\"'))
         .collect();
     println!("DQA {:?}", double_quote_args);
     double_quote_args.iter().for_each(|(i, _)| {
@@ -47,7 +45,7 @@ fn parse_input(buf: &str) -> Result<String, &str> {
         loop {
             let val = argsplit.remove(idx);
             join_vec.push(val.clone());
-            if val.ends_with("\"") {
+            if val.ends_with('\"') {
                 break;
             }
         }
@@ -70,12 +68,12 @@ fn parse_input(buf: &str) -> Result<String, &str> {
     let mut query_pv_map: HashMap<String, Vec<String>> = HashMap::new();
     // Parse and verify query parameters and associated values
     while !argsplit.is_empty() {
-        let mut query_kv_split: Vec<String> = argsplit.pop().unwrap().split("=").map(|e| e.to_owned()).collect();
+        let mut query_kv_split: Vec<String> = argsplit.pop().unwrap().split('=').map(|e| e.to_owned()).collect();
         println!("Query_kv_split: {:?}", query_kv_split);
         if query_kv_split.len() != 2 {
             return Err("Malformed input (couldn't parse query parameter-value pair)");
         }
-        let vals: Vec<String> = query_kv_split.pop().unwrap().split(",").map(|e| e.to_owned()).collect();
+        let vals: Vec<String> = query_kv_split.pop().unwrap().split(',').map(|e| e.to_owned()).collect();
         let param = query_kv_split.pop().unwrap();
         query_pv_map.insert(param, vals);
     }
@@ -124,24 +122,38 @@ fn _assertion_checks() {
     assert!((CONNECT_INIT_ERROR_TIMEOUT_MS as u128) < CONNECT_MAX_ERROR_TIMEOUT_MS);
 }
 
-fn handle_stream(mut stream: TcpStream, send_queue: Arc<Mutex<Queue<String>>>, receive_queue: Arc<Mutex<Queue<String>>>) {
+fn handle_stream(
+    mut stream: TcpStream,
+    send_queue: Arc<Mutex<Queue<String>>>,
+    receive_queue: Arc<Mutex<Queue<String>>>,
+) {
     stream.set_nonblocking(true).expect("Failed to set stream nonblocking");
+    let mut receive_buf: String = String::new();
     loop {
         // if shutdown_trigger.load(Ordering::Relaxed) {
         //     break;
         // }
-        // Handle 
+        // Handle
         // Note: Mutex unlocks when MutexGuard (iq_locked, here) goes out of scope or gets manually drop()-ed
-        let mut send_q_locked = send_queue.lock().unwrap();
-        while !send_q_locked.is_empty() {
-            if let Some(request_bytes) = send_q_locked.dequeue() {
-                stream.write_all(request_bytes.as_bytes()).unwrap();
+        {
+            let mut send_q_locked = send_queue.lock().unwrap();
+            while !send_q_locked.is_empty() {
+                if let Some(request_bytes) = send_q_locked.dequeue() {
+                    stream.write_all(request_bytes.as_bytes()).unwrap();
+                }
             }
         }
         // Unlock send_queue by dropping MutexGuard iq_locked
         // drop(iq_locked);
         // Allow other parties to modify send_queue
         // thread::sleep(Duration::from_millis(50));
+        {
+            receive_buf.clear();
+            let mut receive_q_locked = receive_queue.lock().unwrap();
+            if stream.read_to_string(&mut receive_buf).is_ok() {
+                receive_q_locked.queue(receive_buf.clone()).unwrap();
+            }
+        }
     }
 }
 
@@ -150,15 +162,19 @@ pub fn run() {
     let exit_trigger = Arc::new(AtomicBool::new(false));
     let ctrl_c_exit_trigger: Arc<AtomicBool> = exit_trigger.clone();
     ctrlc::set_handler(move || {
-        println!("Ctrl-C event triggered");
-        ctrl_c_exit_trigger.store(true, Ordering::SeqCst);
-    }).expect("Error setting Ctrl-C handler");
+        if !ctrl_c_exit_trigger.load(Ordering::SeqCst) {
+            println!("Ctrl-C detected...press ENTER to exit");
+            ctrl_c_exit_trigger.store(true, Ordering::SeqCst);
+        }
+    })
+    .expect("Error setting Ctrl-C handler");
     let send_queue: Arc<Mutex<Queue<String>>> = Arc::new(Mutex::new(Queue::new()));
     let send_queue_stream_handler: Arc<Mutex<Queue<String>>> = send_queue.clone();
     let receive_queue: Arc<Mutex<Queue<String>>> = Arc::new(Mutex::new(Queue::new()));
     let receive_queue_stream_handler: Arc<Mutex<Queue<String>>> = receive_queue.clone();
 
-    let stream_handler = thread::spawn(|| handle_stream(try_connect(), send_queue_stream_handler, receive_queue_stream_handler));
+    let stream_handler =
+        thread::spawn(|| handle_stream(try_connect(), send_queue_stream_handler, receive_queue_stream_handler));
     print_help();
     let mut buf: String = String::new();
     loop {
@@ -170,16 +186,22 @@ pub fn run() {
         io::stdout().flush().unwrap();
         io::stdin().read_line(&mut buf).unwrap();
         let buf = buf.trim();
-        
-        if let Ok(mut iq_locked) = send_queue.lock() {
-            let request_string = match parse_input(&buf) {
+
+        if let Ok(mut send_q_locked) = send_queue.lock() {
+            let request_string = match parse_input(buf) {
                 Ok(s) => s,
                 Err(err) => {
                     println!("[ERROR] {}", err);
                     continue;
                 }
             };
-            iq_locked.queue(request_string).unwrap();
+            send_q_locked.queue(request_string).unwrap();
+        }
+        if let Ok(mut receive_q_locked) = receive_queue.lock() {
+            println!("Checking receive queue...");
+            while !receive_q_locked.is_empty() {
+                println!("[SERVER RESPONSE]\n{}", receive_q_locked.dequeue().unwrap());
+            }
         }
     }
     println!("Loop exited");

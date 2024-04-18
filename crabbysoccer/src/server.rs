@@ -18,19 +18,19 @@ fn parse_request(request: Vec<String>) -> Option<Endpoint> {
     if request.is_empty() {
         return None;
     }
-    let uri = (request[0].split(" ").collect::<Vec<&str>>()[1])[1..].to_owned();
-    let (uri, query_param_str) = match uri.split_once("?") {
+    let uri = (request[0].split(' ').collect::<Vec<&str>>()[1])[1..].to_owned();
+    let (uri, query_param_str) = match uri.split_once('?') {
         Some(split) => split,
         None => (uri.as_str(), ""),
     };
     println!("Parsed uri: {}", uri);
     let mut query_pv_map: QueryPVMap = HashMap::new();
-    for qp_str in query_param_str.split("&").collect::<Vec<&str>>() {
+    for qp_str in query_param_str.split('&').collect::<Vec<&str>>() {
         if qp_str.is_empty() {
             break;
         };
-        let (qp, qvals) = qp_str.split_once("=").unwrap();
-        let qvals = qvals.split(",").map(String::from).collect();
+        let (qp, qvals) = qp_str.split_once('=').unwrap();
+        let qvals = qvals.split(',').map(String::from).collect();
         query_pv_map.insert(qp.to_owned(), qvals);
     }
     let endpoint = Endpoint::new(uri, query_pv_map);
@@ -38,8 +38,10 @@ fn parse_request(request: Vec<String>) -> Option<Endpoint> {
     Some(endpoint)
 }
 
+#[allow(clippy::manual_map)]
 fn get_response_string(request: &Endpoint, db: &database::DB) -> Option<String> {
-    if request.uri == "get-all-players" { // optional params: name
+    if request.uri == "get-all-players" {
+        // optional params: name
         return Some(if let Some(name) = request.query_pv_map.get("name") {
             let name = if name.len() == 1 { Some(name[0].clone()) } else { None };
             db.get_all_players(name).unwrap()
@@ -53,15 +55,13 @@ fn get_response_string(request: &Endpoint, db: &database::DB) -> Option<String> 
             request.query_pv_map.get("statistics"),
         );
         let (player_id_arg, statistics_arg) = (
-            if player_id.is_some() {
-                Some(player_id.unwrap()[0].clone())
-            } else {
-                None
+            match player_id {
+                Some(player_id) => Some(player_id[0].clone()),
+                None => None,
             },
-            if statistics.is_some() {
-                Some(statistics.unwrap().clone())
-            } else {
-                None
+            match statistics {
+                Some(statistics) => Some(statistics.clone()),
+                None => None,
             },
         );
         let player = db.get_player(player_id_arg, statistics_arg).unwrap();
@@ -129,7 +129,7 @@ enum InputAction {
 }
 
 fn parse_input(buf: &str) -> Option<InputAction> {
-    let argsplit: Vec<String> = buf.split(" ").map(|e| e.trim().to_lowercase()).collect();
+    let argsplit: Vec<String> = buf.split(' ').map(|e| e.trim().to_lowercase()).collect();
     if argsplit[0].contains("quit") || argsplit[0] == "q" {
         Some(InputAction::Quit)
     } else {
@@ -140,28 +140,35 @@ fn parse_input(buf: &str) -> Option<InputAction> {
 fn run_cli(shutdown_trigger: Arc<AtomicBool>) {
     let mut buf: String = String::new();
     loop {
+        if shutdown_trigger.load(Ordering::Relaxed) {
+            break;
+        }
         buf.clear();
         io::stdout().flush().unwrap();
         print!("$ ");
         io::stdout().flush().unwrap();
         io::stdin().read_line(&mut buf).unwrap();
         let buf = buf.trim();
-        match parse_input(&buf) {
-            Some(action) => match action {
-                InputAction::Quit => {
-                    shutdown_trigger.store(true, Ordering::Relaxed);
-                    break;
-                }
-            },
-            None => (),
-        };
+        if let Some(action) = parse_input(buf) {
+            match action {
+                InputAction::Quit => shutdown_trigger.store(true, Ordering::Relaxed),
+            }
+        }
     }
 }
 
 pub fn run(init_db: Option<bool>) {
     // Define events
     let shutdown_trigger = Arc::new(AtomicBool::new(false));
-    let cli_shutdown_trigger = shutdown_trigger.clone();
+    let cli_shutdown_trigger: Arc<AtomicBool> = shutdown_trigger.clone();
+    let ctrlc_shutdown_triger: Arc<AtomicBool> = shutdown_trigger.clone();
+    ctrlc::set_handler(move || {
+        if !ctrlc_shutdown_triger.load(Ordering::SeqCst) {
+            println!("Ctrl-C detected...press ENTER to exit");
+            ctrlc_shutdown_triger.store(true, Ordering::SeqCst);
+        }
+    })
+    .unwrap();
     let _path = std::path::Path::new("soccer.db");
     if init_db.is_some_and(|b| b) || !_path.exists() {
         println!("Database initializating...");
@@ -173,12 +180,13 @@ pub fn run(init_db: Option<bool>) {
     listener.set_nonblocking(true).expect("Cannot set non-blocking");
     let mut stream_thread_handles: Vec<JoinHandle<()>> = vec![];
     println!("Server started successfully!");
+
     // Initialize Server CLI IO
     let cli_thread_handle = thread::spawn(|| run_cli(cli_shutdown_trigger));
     for stream in listener.incoming() {
         match stream {
             Ok(_stream) => {
-                println!("Incoming connection from: {}", _stream.peer_addr().unwrap().to_string());
+                println!("Incoming connection from: {}", _stream.peer_addr().unwrap());
                 let stream_shutdown = shutdown_trigger.clone();
                 stream_thread_handles.push(thread::spawn(|| handle_connection(_stream, stream_shutdown)));
             }

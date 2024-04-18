@@ -23,10 +23,10 @@ impl TableNameTrait for TableName {
 }
 impl Display for TableName {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        f.write_str(&self.as_str())
+        f.write_str(self.as_str())
     }
 }
-const CREATE_TABLE_QUERIES: [&'static str; 3] = [
+const CREATE_TABLE_QUERIES: [&str; 3] = [
     // player
     "CREATE TABLE player (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -102,7 +102,7 @@ impl DB {
             connection: Connection::open("soccer.db").unwrap(),
         }
     }
-    fn parsed_rows_to_string<T: ToString, U: ToString>(column_names: &Vec<T>, values: &Vec<Vec<U>>) -> String {
+    fn parsed_rows_to_string<T: ToString, U: ToString>(column_names: &[T], values: &[Vec<U>]) -> String {
         let column_names = column_names
             .iter()
             .map(|e| e.to_string())
@@ -127,9 +127,13 @@ impl DB {
             .collect::<Vec<String>>()
     }
 
-    fn rows_as_2d_vec_string(statement: &mut Statement) -> Vec<Vec<String>>{
+    fn rows_as_2d_vec_string(statement: &mut Statement) -> Vec<Vec<String>> {
         let n_columns = statement.column_count();
-        statement.query_map([], |row| Ok(DB::row_to_vec_string(&n_columns, row))).unwrap().map(Result::unwrap).collect()
+        statement
+            .query_map([], |row| Ok(DB::row_to_vec_string(&n_columns, row)))
+            .unwrap()
+            .map(Result::unwrap)
+            .collect()
     }
 
     fn rows_to_string(statement: &mut Statement) -> String {
@@ -192,8 +196,8 @@ fn read_lines(filename: &str) -> Vec<String> {
         .collect() // gather them together into a vector
 }
 
-fn _get_ignored_columns(csv_header: &Vec<String>) -> Vec<(usize, String)> {
-    const IGNORE_COLUMNS: [&'static str; 14] = [
+fn _get_ignored_columns(csv_header: &[String]) -> Vec<(usize, String)> {
+    const IGNORE_COLUMNS: [&str; 14] = [
         "Big chances missed",
         "Last man tackles",
         "Clearances off line",
@@ -220,16 +224,14 @@ fn _get_ignored_columns(csv_header: &Vec<String>) -> Vec<(usize, String)> {
 fn parse_csv() -> (Vec<String>, Vec<Vec<String>>) {
     let mut lines: Vec<Vec<String>> = read_lines("soccer.csv")
         .iter()
-        .map(|e| e.split(",").map(|e| String::from(e.trim())).collect())
+        .map(|e| e.split(',').map(|e| String::from(e.trim())).collect())
         .collect();
 
     let mut csv_header = lines.remove(0);
     let ignore_columns = _get_ignored_columns(&csv_header);
     println!("IGNORE COLUMNS INDICES: {:?}", ignore_columns);
-    let mut csvh_offset = 0;
-    for (idx, _) in &ignore_columns {
+    for (csvh_offset, (idx, _)) in ignore_columns.iter().enumerate() {
         csv_header.remove(*idx - csvh_offset);
-        csvh_offset += 1;
     }
     //csv_header.iter_mut().for_each(|line| {  ignore_columns_indices.iter().for_each(|idx| {line.remove((*idx) - csvh_offset); csvh_offset += 1;})});
     lines.iter_mut().for_each(|line| {
@@ -245,8 +247,8 @@ fn parse_csv() -> (Vec<String>, Vec<Vec<String>>) {
 fn insert_all_into(
     connection: &Connection,
     table_name: TableName,
-    attributes: &Vec<&(TableName, &str)>,
-    data: &Vec<Vec<String>>,
+    attributes: &[&(TableName, &str)],
+    data: &[Vec<String>],
 ) -> Result<(), rusqlite::Error> {
     // Get data_indices and respective attributes for table_name
     let (data_indices, attributes): (Vec<usize>, Vec<&(TableName, &str)>) =
@@ -288,19 +290,15 @@ fn insert_all_into(
                     let e = e.trim().to_owned();
                     if e.is_empty() {
                         "0".to_owned()
+                    } else if e.parse::<f64>().is_ok() {
+                        e.clone()
+                    } else if e.ends_with('%') {
+                        // Percentage into decimal - does not enforce the total number of digits denoted by n in SQL's Decimal(n, p),
+                        // but does enforce p (# of digits after decimal)
+                        format!("{:.2}", e[..e.len() - 1].parse::<f64>().unwrap() / 100.0)
                     } else {
-                        if e.parse::<f64>().is_ok() {
-                            e.clone()
-                        } else {
-                            if e.ends_with("%") {
-                                // Percentage into decimal - does not enforce the total number of digits denoted by n in SQL's Decimal(n, p),
-                                // but does enforce p (# of digits after decimal)
-                                format!("{:.2}", e[..e.len() - 1].parse::<f64>().unwrap() / 100.0)
-                            } else {
-                                // Stringy data
-                                format!("\"{}\"", e) // Add quotations for Stringy data
-                            }
-                        }
+                        // Stringy data
+                        format!("\"{}\"", e) // Add quotations for Stringy data
                     }
                 })
                 .collect();
@@ -321,8 +319,8 @@ fn insert_all_into(
     Ok(())
 }
 
-pub fn csv_to_sqlite<'a>() {
-    let mut csv_to_db_attribute_map: HashMap<&'a str, (TableName, &'static str)> = HashMap::new();
+pub fn csv_to_sqlite() {
+    let mut csv_to_db_attribute_map: HashMap<&str, (TableName, &'static str)> = HashMap::new();
     csv_to_db_attribute_map.extend([
         ("Name", (TableName::Player, "name")),
         ("Jersey Number", (TableName::Player, "jersey_number")),
@@ -375,12 +373,15 @@ pub fn csv_to_sqlite<'a>() {
     println!("HEADER: {:#?}\nDATA HEAD: {:#?}", header, data[0]);
     let _path = Path::new("soccer.db");
     println!("Deleting old db file if exists...");
-    match std::fs::remove_file(_path) {
-        Ok(_) => {
-            println!("Successfully deleted file: {}", _path.display())
-        }
-        Err(_) => (),
+    if let Ok(()) = std::fs::remove_file(_path) {
+        println!("Successfully deleted file: {}", _path.display())
     }
+    // match std::fs::remove_file(_path) {
+    //     Ok(_) => {
+    //         println!("Successfully deleted file: {}", _path.display())
+    //     }
+    //     Err(_) => (),
+    // }
     let connection = Connection::open("soccer.db").unwrap();
     println!("Creating database tables...");
     CREATE_TABLE_QUERIES.iter().for_each(|e| {

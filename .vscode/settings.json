@@ -1,0 +1,5 @@
+{
+    "rust-analyzer.check.command": "clippy", // Replaces the default `cargo check` command with `cargo clippy` on Rust file save
+    "editor.formatOnSave": true,
+    "terminal.integrated.cwd": "crabbysoccer"
+}
