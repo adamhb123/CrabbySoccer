@@ -1,4 +1,7 @@
-use crate::requests;
+use crate::{
+    common::{self, InputAction, INPUT_ACTION_PARSE_DEFS},
+    requests,
+};
 use queue::Queue;
 use std::collections::HashMap;
 use std::io::{self, Read, Write};
@@ -55,9 +58,12 @@ fn parse_input(buf: &str) -> Result<String, &str> {
     println!("ARGSPLIT after double quote parse");
     println!("{:?}", argsplit);
 
-    // Check if quitting
-    if argsplit[0].contains("quit") || argsplit[0] == "q" {
-        return Err("Quitting application...");
+    // Check for CLI input actions
+    if let Some(action) = common::parse_input_action(&argsplit) {
+        match action {
+            InputAction::Quit => {}
+            InputAction::ListConnections => todo!(),
+        }
     }
     // Parse and verify endpoint
     let mut endpoint = if let Some(e) = requests::clone_authoritative_endpoint_by_uri(argsplit.remove(0).as_str()) {
@@ -126,13 +132,14 @@ fn handle_stream(
     mut stream: TcpStream,
     send_queue: Arc<Mutex<Queue<String>>>,
     receive_queue: Arc<Mutex<Queue<String>>>,
+    shutdown_trigger: Arc<AtomicBool>,
 ) {
     stream.set_nonblocking(true).expect("Failed to set stream nonblocking");
     let mut receive_buf: String = String::new();
     loop {
-        // if shutdown_trigger.load(Ordering::Relaxed) {
-        //     break;
-        // }
+        if shutdown_trigger.load(Ordering::Relaxed) {
+            break;
+        }
         // Handle
         // Note: Mutex unlocks when MutexGuard (iq_locked, here) goes out of scope or gets manually drop()-ed
         {
@@ -159,26 +166,35 @@ fn handle_stream(
 
 pub fn run() {
     _assertion_checks();
-    let exit_trigger = Arc::new(AtomicBool::new(false));
-    let ctrl_c_exit_trigger: Arc<AtomicBool> = exit_trigger.clone();
-    ctrlc::set_handler(move || {
-        if !ctrl_c_exit_trigger.load(Ordering::SeqCst) {
-            println!("Ctrl-C detected...press ENTER to exit");
-            ctrl_c_exit_trigger.store(true, Ordering::SeqCst);
-        }
-    })
-    .expect("Error setting Ctrl-C handler");
+    let shutdown_trigger = Arc::new(AtomicBool::new(false));
+    let (ctrl_c_shutdown_trigger, stream_shutdown_trigger) = (shutdown_trigger.clone(), shutdown_trigger.clone());
     let send_queue: Arc<Mutex<Queue<String>>> = Arc::new(Mutex::new(Queue::new()));
     let send_queue_stream_handler: Arc<Mutex<Queue<String>>> = send_queue.clone();
     let receive_queue: Arc<Mutex<Queue<String>>> = Arc::new(Mutex::new(Queue::new()));
     let receive_queue_stream_handler: Arc<Mutex<Queue<String>>> = receive_queue.clone();
 
-    let stream_handler =
-        thread::spawn(|| handle_stream(try_connect(), send_queue_stream_handler, receive_queue_stream_handler));
+    // Setup Ctrl-C Handler
+    ctrlc::set_handler(move || {
+        if !ctrl_c_shutdown_trigger.load(Ordering::SeqCst) {
+            println!("Ctrl-C detected...press ENTER to exit");
+            ctrl_c_shutdown_trigger.store(true, Ordering::SeqCst);
+        }
+    })
+    .expect("Error setting Ctrl-C handler");
+
+    // Setup stream handler
+    let stream_handler = thread::spawn(|| {
+        handle_stream(
+            try_connect(),
+            send_queue_stream_handler,
+            receive_queue_stream_handler,
+            stream_shutdown_trigger,
+        )
+    });
     print_help();
     let mut buf: String = String::new();
     loop {
-        if exit_trigger.load(Ordering::SeqCst) {
+        if shutdown_trigger.load(Ordering::SeqCst) {
             break;
         }
         buf.clear();

@@ -1,4 +1,5 @@
 use crate::{
+    common::{self, InputAction, INPUT_ACTION_PARSE_DEFS},
     database,
     requests::{self, Endpoint, QueryPVMap},
 };
@@ -8,7 +9,7 @@ use std::{
     net::{TcpListener, TcpStream},
     sync::{
         atomic::{AtomicBool, Ordering},
-        Arc,
+        Arc, RwLock,
     },
     thread::{self, JoinHandle},
     time::Duration,
@@ -116,28 +117,22 @@ fn handle_connection(stream: TcpStream, shutdown_trigger: Arc<AtomicBool>) {
     }
 }
 
-fn cleanup(thread_handles: &mut Vec<JoinHandle<()>>) {
+fn cleanup(thread_handles: &mut Vec<(Option<String>, JoinHandle<()>)>) {
     println!("Cleaning up thread handles...");
-    while !thread_handles.is_empty() {
-        thread_handles.pop().unwrap().join().unwrap();
+    while let Some((name, handle)) = thread_handles.pop() {
+        let name = name.unwrap_or("UNKNOWN".to_owned());
+        println!("Cleaning up connection: {}", name);
+        handle.join().unwrap();
     }
     println!("Finished cleaning up thread handles...goodbye!");
 }
 
-enum InputAction {
-    Quit,
-}
-
 fn parse_input(buf: &str) -> Option<InputAction> {
-    let argsplit: Vec<String> = buf.split(' ').map(|e| e.trim().to_lowercase()).collect();
-    if argsplit[0].contains("quit") || argsplit[0] == "q" {
-        Some(InputAction::Quit)
-    } else {
-        None
-    }
+    let argsplit: Vec<String> = buf.split(' ').map(|e| e.trim().to_lowercase().to_owned()).collect();
+    common::parse_input_action(&argsplit)
 }
 
-fn run_cli(shutdown_trigger: Arc<AtomicBool>) {
+fn run_cli(shutdown_trigger: Arc<AtomicBool>, connection_names: Arc<RwLock<Vec<String>>>) {
     let mut buf: String = String::new();
     loop {
         if shutdown_trigger.load(Ordering::Relaxed) {
@@ -152,6 +147,9 @@ fn run_cli(shutdown_trigger: Arc<AtomicBool>) {
         if let Some(action) = parse_input(buf) {
             match action {
                 InputAction::Quit => shutdown_trigger.store(true, Ordering::Relaxed),
+                InputAction::ListConnections => {
+                    println!("Connections: {:#?}", connection_names.read().unwrap())
+                }
             }
         }
     }
@@ -178,17 +176,25 @@ pub fn run(init_db: Option<bool>) {
     println!("Starting server...");
     let listener = TcpListener::bind("127.0.0.1:7878").unwrap();
     listener.set_nonblocking(true).expect("Cannot set non-blocking");
-    let mut stream_thread_handles: Vec<JoinHandle<()>> = vec![];
+    let mut stream_thread_handles: Vec<(Option<String>, JoinHandle<()>)> = vec![];
     println!("Server started successfully!");
 
+    let connection_names: Arc<RwLock<Vec<String>>> = Arc::new(RwLock::new(vec![]));
+    let connection_names_cli: Arc<RwLock<Vec<String>>> = connection_names.clone();
     // Initialize Server CLI IO
-    let cli_thread_handle = thread::spawn(|| run_cli(cli_shutdown_trigger));
+    let cli_thread_handle = thread::spawn(|| run_cli(cli_shutdown_trigger, connection_names_cli));
+    // Connection listener loop
     for stream in listener.incoming() {
         match stream {
             Ok(_stream) => {
-                println!("Incoming connection from: {}", _stream.peer_addr().unwrap());
+                let peer_addr: String = _stream.peer_addr().unwrap().to_string();
+                println!("Incoming connection from: {}", peer_addr);
+                connection_names.write().unwrap().push(peer_addr);
                 let stream_shutdown = shutdown_trigger.clone();
-                stream_thread_handles.push(thread::spawn(|| handle_connection(_stream, stream_shutdown)));
+                stream_thread_handles.push((
+                    Some(_stream.peer_addr().unwrap().clone().to_string()),
+                    thread::spawn(|| handle_connection(_stream, stream_shutdown)),
+                ));
             }
             Err(ref e) if e.kind() == ErrorKind::WouldBlock => {
                 // println!("WOULD BLOCK: {}", e);
@@ -203,6 +209,6 @@ pub fn run(init_db: Option<bool>) {
         }
     }
     shutdown_trigger.store(true, Ordering::Relaxed);
-    stream_thread_handles.push(cli_thread_handle);
+    stream_thread_handles.push((Some("CLI".to_owned()), cli_thread_handle));
     cleanup(&mut stream_thread_handles);
 }
