@@ -7,6 +7,7 @@ use crate::{
     requests::{self, Endpoint, QueryPVMap},
 };
 use std::{
+    any::Any,
     collections::HashMap,
     io::{self, BufRead, BufReader, ErrorKind, Write},
     net::{TcpListener, TcpStream},
@@ -18,33 +19,39 @@ use std::{
     time::Duration,
 };
 
+#[derive(Debug)]
 struct Connection {
     stream: TcpStream,
     _shutdown_trigger: Arc<AtomicBool>,
     _handle: Option<JoinHandle<()>>,
 }
 impl Connection {
-    fn new(stream: TcpStream) -> Self {
+    fn new(stream: TcpStream, shutdown_trigger: Option<Arc<AtomicBool>>) -> Self {
         Connection {
             stream,
-            _shutdown_trigger: Arc::new(AtomicBool::new(false)),
+            _shutdown_trigger: shutdown_trigger.unwrap_or(Arc::new(AtomicBool::new(false))),
             _handle: None,
         }
     }
 
-    fn get_name(&self) -> &String {
-        &self.stream.peer_addr().unwrap().to_string()
+    fn get_name(&self) -> String {
+        self.stream.peer_addr().unwrap().to_string().to_owned()
     }
 
     fn start_thread(&mut self) {
+        let sd = &self._shutdown_trigger;
         self._handle = Some(thread::spawn(|| loop {
-            if self._shutdown_trigger.load(Ordering::Relaxed) {
+            if sd.load(Ordering::Relaxed) {
                 break;
             }
         }));
     }
     fn shutdown(&mut self) {
         self._shutdown_trigger.store(true, Ordering::Relaxed)
+    }
+
+    fn join(&self) -> Result<(), Box<dyn Any + Send>> {
+        self._handle.unwrap().join()
     }
 }
 
@@ -105,11 +112,7 @@ fn get_response_string(request: &Endpoint, db: &database::DB) -> Option<String> 
     None
 }
 
-fn handle_connection(
-    stream: TcpStream,
-    shutdown_trigger: Arc<AtomicBool>,
-    drop_connection_queue: Arc<Mutex<Queue<String>>>,
-) {
+fn handle_connection(stream: TcpStream, shutdown_trigger: Arc<AtomicBool>, connections: Arc<RwLock<Vec<Connection>>>) {
     stream.set_nonblocking(false).expect("set_nonblocking call failed");
     let peer_addr = stream.peer_addr().unwrap();
     let db = database::DB::new();
@@ -163,12 +166,13 @@ fn handle_connection(
     }
 }
 
-fn cleanup(thread_handles: Arc<RwLock<Vec<(Option<String>, JoinHandle<()>)>>>) {
+fn cleanup(connections: Arc<RwLock<Vec<Connection>>>) {
     println!("Cleaning up thread handles...");
-    while let Some((name, handle)) = thread_handles.write().unwrap().pop() {
-        let name = name.unwrap_or("UNKNOWN".to_owned());
+    while let Some(mut conn) = connections.write().unwrap().pop() {
+        let name = conn.get_name();
         println!("Cleaning up connection: {}", name);
-        handle.join().unwrap();
+        conn.shutdown();
+        conn.join().unwrap();
     }
     println!("Finished cleaning up thread handles...goodbye!");
 }
@@ -178,7 +182,7 @@ fn parse_input(buf: &str) -> Option<InputAction> {
     common::parse_input_action(&argsplit)
 }
 
-fn run_cli(shutdown_trigger: Arc<AtomicBool>, connection_names: Arc<RwLock<Vec<String>>>) {
+fn run_cli(shutdown_trigger: Arc<AtomicBool>, stream_handles: Arc<RwLock<Vec<Connection>>>) {
     let mut buf: String = String::new();
     loop {
         if shutdown_trigger.load(Ordering::Relaxed) {
@@ -194,7 +198,7 @@ fn run_cli(shutdown_trigger: Arc<AtomicBool>, connection_names: Arc<RwLock<Vec<S
             match action {
                 InputAction::Quit => shutdown_trigger.store(true, Ordering::Relaxed),
                 InputAction::ListConnections => {
-                    println!("Connections: {:#?}", connection_names.read().unwrap())
+                    println!("Connections: {:#?}", stream_handles.read().unwrap());
                 }
             }
         }
@@ -222,24 +226,19 @@ pub fn run(init_db: Option<bool>) {
     println!("Starting server...");
     let listener = TcpListener::bind("127.0.0.1:7878").unwrap();
     listener.set_nonblocking(true).expect("Cannot set non-blocking");
-    let stream_thread_handles: Arc<RwLock<Vec<(Option<String>, JoinHandle<()>)>>> = Arc::new(RwLock::new(vec![]));
+    let stream_thread_handles: Arc<RwLock<Vec<Connection>>> = Arc::new(RwLock::new(vec![]));
+    let cli_stream_thread_handles: Arc<RwLock<Vec<Connection>>> = stream_thread_handles.clone();
     println!("Server started successfully!");
 
     // Initialize Server CLI IO
-    let cli_thread_handle = thread::spawn(|| run_cli(cli_shutdown_trigger, connection_names_cli));
+    let cli_thread_handle = thread::spawn(|| run_cli(cli_shutdown_trigger, cli_stream_thread_handles));
     // Connection listener loop
     for stream in listener.incoming() {
         match stream {
             Ok(stream) => {
-                let connection = Connection::new(stream);
-                println_around_input!("Incoming connection from: {}", connection.get_name());
-                connection_names.write().unwrap().push(peer_addr);
-                let stream_shutdown = shutdown_trigger.clone();
-                let stream_drop_connection_queue = drop_connection_queue.clone();
-                stream_thread_handles.write().unwrap().push((
-                    Some(_stream.peer_addr().unwrap().clone().to_string()),
-                    thread::spawn(|| handle_connection(_stream, stream_shutdown, stream_drop_connection_queue)),
-                ));
+                let connection = Connection::new(stream, Some(shutdown_trigger.clone()));
+                println!("Incoming connection from: {}", connection.get_name());
+                stream_thread_handles.write().unwrap().push(connection);
             }
             Err(ref e) if e.kind() == ErrorKind::WouldBlock => {
                 // println!("WOULD BLOCK: {}", e);
@@ -254,6 +253,6 @@ pub fn run(init_db: Option<bool>) {
         }
     }
     shutdown_trigger.store(true, Ordering::Relaxed);
-    stream_thread_handles.push((Some("CLI".to_owned()), cli_thread_handle));
-    cleanup(&mut Arc::new(RwLock::new(vec![])));
+    //stream_thread_handles.push((Some("CLI".to_owned()), cli_thread_handle));
+    cleanup(stream_thread_handles);
 }
