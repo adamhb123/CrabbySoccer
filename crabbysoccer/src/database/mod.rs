@@ -90,6 +90,7 @@ const CREATE_TABLE_QUERIES: [&str; 3] = [
     );",
 ];
 
+#[allow(dead_code)]
 const JOIN_ALL: &str =
     "player JOIN statistics ON player.id = statistics.player_id JOIN position ON player.id = position.player_id";
 
@@ -180,14 +181,20 @@ impl DB {
             Some(id) => format!("WHERE player.id = {id}"),
             None => "".to_owned(),
         };
-        let sql =
-            format!("SELECT player.id, player.name, position.name as position {statistics_string} FROM {JOIN_ALL} {where_pid_clause};");
+        let sql = format!(
+            "SELECT player.id, player.name, position.name as position {} FROM {} {};",
+            statistics_string, JOIN_ALL, where_pid_clause
+        );
         println!("Querying DB: {}", sql);
         let mut statement = self.connection.prepare(&sql).unwrap();
         Ok(DB::rows_to_string(&mut statement))
     }
 }
-
+impl Default for DB {
+    fn default() -> Self {
+        Self::new()
+    }
+}
 fn read_lines(filename: &str) -> Vec<String> {
     read_to_string(filename)
         .unwrap() // panic on possible file-reading errors

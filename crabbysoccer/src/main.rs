@@ -1,6 +1,6 @@
 mod client;
 mod common;
-mod database;
+pub mod database;
 mod requests;
 mod server;
 mod tests;

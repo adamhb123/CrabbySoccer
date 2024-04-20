@@ -14,11 +14,6 @@ reqwest = "0.12.2"
 rusqlite = { version = "0.31.0", features = ["bundled"] }
 strum = { version = "0.26.2", features = ["derive"] }
 
-[lib]
-name = "crabbylib"
-path = "src/lib.rs"
-proc-macro = true
-
 [[bin]]
 name = "crabbysoccer"
 path = "src/main.rs"

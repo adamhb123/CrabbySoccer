@@ -3,12 +3,12 @@ use crate::{
     requests,
 };
 use queue::Queue;
-use std::collections::HashMap;
 use std::io::{self, Read, Write};
 use std::net::TcpStream;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex};
 use std::thread;
+use std::{collections::HashMap, io::ErrorKind};
 
 const SERVER_ADDR: &str = "127.0.0.1:7878";
 const CONNECT_INIT_ERROR_TIMEOUT_MS: u64 = 1000;
@@ -169,7 +169,12 @@ fn handle_stream(
                     }
                     receive_q_locked.queue(receive_buf.clone()).unwrap();
                 }
-                Err(err) => {}
+                Err(ref e) if e.kind() == ErrorKind::WouldBlock => {
+                    if shutdown_trigger.load(Ordering::Relaxed) {
+                        break;
+                    }
+                }
+                Err(e) => panic!("Failed to read from stream, error: {}", e),
             }
         }
     }

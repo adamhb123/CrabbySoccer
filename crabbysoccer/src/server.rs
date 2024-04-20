@@ -1,6 +1,3 @@
-use crabbylib::println_around_input;
-use queue::Queue;
-
 use crate::{
     common::{self, InputAction},
     database,
@@ -13,7 +10,7 @@ use std::{
     net::{TcpListener, TcpStream},
     sync::{
         atomic::{AtomicBool, Ordering},
-        Arc, Mutex, RwLock,
+        Arc, RwLock,
     },
     thread::{self, JoinHandle},
     time::Duration,
@@ -21,37 +18,103 @@ use std::{
 
 #[derive(Debug)]
 struct Connection {
-    stream: TcpStream,
+    name: String,
+    stream: Option<TcpStream>,
     _shutdown_trigger: Arc<AtomicBool>,
     _handle: Option<JoinHandle<()>>,
 }
 impl Connection {
     fn new(stream: TcpStream, shutdown_trigger: Option<Arc<AtomicBool>>) -> Self {
         Connection {
-            stream,
+            name: stream.peer_addr().unwrap().to_string().to_owned(),
+            stream: Some(stream),
             _shutdown_trigger: shutdown_trigger.unwrap_or(Arc::new(AtomicBool::new(false))),
             _handle: None,
         }
     }
 
-    fn get_name(&self) -> String {
-        self.stream.peer_addr().unwrap().to_string().to_owned()
-    }
+    fn start_thread(self) -> Self {
+        // Consumes self and returns corpse with stream inaccessible
+        let sd = self._shutdown_trigger.clone();
+        let name = self.name.clone();
+        let handle = thread::spawn(move || {
+            self.stream
+                .as_ref()
+                .unwrap()
+                .set_nonblocking(false)
+                .expect("set_nonblocking call failed");
+            let db = database::DB::new();
+            let mut buf_reader = BufReader::new(self.stream.as_ref().unwrap());
+            let mut buf: Vec<u8> = vec![];
+            loop {
+                if self._shutdown_trigger.load(Ordering::Relaxed) {
+                    println!("Dropping connection: {}", self.name);
+                    break;
+                }
+                buf.clear();
+                // Below should be converted to a non-blocking read in order to avoid hanging on server quit
+                match buf_reader.read_until(requests::REQUEST_TERMINATOR, &mut buf) {
+                    Ok(len) => {
+                        println!("BUFREAD LEN: {}", len);
+                        if len == 0 {
+                            println!("Connection {} dropped!", self.name);
+                            break;
+                        }
+                    }
+                    Err(_) => todo!(),
+                }
+                let http_request: Vec<String> = buf
+                    .lines()
+                    .take_while(|line| {
+                        let line = line.as_ref().unwrap();
+                        println!("{} is empty? {}", line, line.is_empty());
+                        !line.is_empty()
+                    })
+                    .map(Result::unwrap)
+                    .collect();
+                println!("[{}]: {:#?}", self.name, http_request);
+                let parsed = match parse_request(http_request) {
+                    Some(ep) => ep,
+                    None => break,
+                };
+                let response_string = match get_response_string(&parsed, &db) {
+                    Some(rs) => rs,
+                    None => "Failed to parse OR no response required".to_owned(),
+                };
+                println!("RESPONSE:\n{}", response_string);
+                self.stream
+                    .as_ref()
+                    .unwrap()
+                    .write_all(response_string.as_bytes())
+                    .unwrap();
 
-    fn start_thread(&mut self) {
-        let sd = &self._shutdown_trigger;
-        self._handle = Some(thread::spawn(|| loop {
-            if sd.load(Ordering::Relaxed) {
-                break;
+                /*Err(ref e) if e.kind() == io::ErrorKind::WouldBlock => {
+                    if shutdown_trigger.load(Ordering::Relaxed) {
+                        println!("Dropping connection: {}", peer_addr);
+                        break;
+                    }
+                    thread::sleep(Duration::from_millis(50))
+                }
+                Err(e) => panic!("encountered IO error: {e}"),*/
             }
-        }));
+        });
+        Self {
+            name,
+            stream: None, // Stream is consumed by thread
+            _shutdown_trigger: sd,
+            _handle: Some(handle),
+        }
     }
     fn shutdown(&mut self) {
         self._shutdown_trigger.store(true, Ordering::Relaxed)
     }
 
-    fn join(&self) -> Result<(), Box<dyn Any + Send>> {
-        self._handle.unwrap().join()
+    fn join(self) -> Result<(), Box<dyn Any + Send>> {
+        if let Some(h) = self._handle {
+            h.join()
+        } else {
+            Err(Box::new("Cannot join: Connection stream handler thread not started!"))
+        }
     }
 }
 
@@ -112,69 +175,15 @@ fn get_response_string(request: &Endpoint, db: &database::DB) -> Option<String> 
     None
 }
 
-fn handle_connection(stream: TcpStream, shutdown_trigger: Arc<AtomicBool>, connections: Arc<RwLock<Vec<Connection>>>) {
-    stream.set_nonblocking(false).expect("set_nonblocking call failed");
-    let peer_addr = stream.peer_addr().unwrap();
-    let db = database::DB::new();
-    let mut buf_reader = BufReader::new(&stream);
-    let mut buf: Vec<u8> = vec![];
-    loop {
-        if shutdown_trigger.load(Ordering::Relaxed) {
-            println!("Dropping connection: {}", peer_addr);
-            break;
-        }
-        buf.clear();
-        // Below should be converted to a non-blocking read in order to avoid hanging on server quit
-        match buf_reader.read_until(requests::REQUEST_TERMINATOR, &mut buf) {
-            Ok(len) => {
-                println!("BUFREAD LEN: {}", len);
-                if len == 0 {
-                    println!("Connection {} dropped!", stream.peer_addr().unwrap());
-                    break;
-                }
-            }
-            Err(_) => todo!(),
-        }
-        let http_request: Vec<String> = buf
-            .lines()
-            .take_while(|line| {
-                let line = line.as_ref().unwrap();
-                println!("{} is empty? {}", line, line.is_empty());
-                !line.is_empty()
-            })
-            .map(Result::unwrap)
-            .collect();
-        println!("[{}]: {:#?}", peer_addr, http_request);
-        let parsed = match parse_request(http_request) {
-            Some(ep) => ep,
-            None => break,
-        };
-        let response_string = match get_response_string(&parsed, &db) {
-            Some(rs) => rs,
-            None => "Failed to parse OR no response required".to_owned(),
-        };
-        println!("RESPONSE:\n{}", response_string);
-        (&stream).write_all(response_string.as_bytes()).unwrap();
-        /*Err(ref e) if e.kind() == io::ErrorKind::WouldBlock => {
-            if shutdown_trigger.load(Ordering::Relaxed) {
-                println!("Dropping connection: {}", peer_addr);
-                break;
-            }
-            thread::sleep(Duration::from_millis(50))
-        }
-        Err(e) => panic!("encountered IO error: {e}"),*/
-    }
-}
-
-fn cleanup(connections: Arc<RwLock<Vec<Connection>>>) {
+fn cleanup(cli_thread_handle: JoinHandle<()>, connections: Arc<RwLock<Vec<Connection>>>) {
     println!("Cleaning up thread handles...");
     while let Some(mut conn) = connections.write().unwrap().pop() {
-        let name = conn.get_name();
-        println!("Cleaning up connection: {}", name);
+        println!("Cleaning up connection: {}", conn.name);
         conn.shutdown();
         conn.join().unwrap();
     }
     println!("Finished cleaning up thread handles...goodbye!");
+    cli_thread_handle.join().unwrap();
 }
 
 fn parse_input(buf: &str) -> Option<InputAction> {
@@ -226,19 +235,19 @@ pub fn run(init_db: Option<bool>) {
     println!("Starting server...");
     let listener = TcpListener::bind("127.0.0.1:7878").unwrap();
     listener.set_nonblocking(true).expect("Cannot set non-blocking");
-    let stream_thread_handles: Arc<RwLock<Vec<Connection>>> = Arc::new(RwLock::new(vec![]));
-    let cli_stream_thread_handles: Arc<RwLock<Vec<Connection>>> = stream_thread_handles.clone();
+    let connections: Arc<RwLock<Vec<Connection>>> = Arc::new(RwLock::new(vec![]));
+    let cli_connections: Arc<RwLock<Vec<Connection>>> = connections.clone();
     println!("Server started successfully!");
 
     // Initialize Server CLI IO
-    let cli_thread_handle = thread::spawn(|| run_cli(cli_shutdown_trigger, cli_stream_thread_handles));
+    let cli_thread_handle = thread::spawn(|| run_cli(cli_shutdown_trigger, cli_connections));
     // Connection listener loop
     for stream in listener.incoming() {
         match stream {
             Ok(stream) => {
-                let connection = Connection::new(stream, Some(shutdown_trigger.clone()));
-                println!("Incoming connection from: {}", connection.get_name());
-                stream_thread_handles.write().unwrap().push(connection);
+                let conn = Connection::new(stream, Some(shutdown_trigger.clone()));
+                println!("Incoming connection from: {}", conn.name);
+                connections.write().unwrap().push(conn.start_thread());
             }
             Err(ref e) if e.kind() == ErrorKind::WouldBlock => {
                 // println!("WOULD BLOCK: {}", e);
@@ -253,6 +262,5 @@ pub fn run(init_db: Option<bool>) {
         }
     }
     shutdown_trigger.store(true, Ordering::Relaxed);
-    //stream_thread_handles.push((Some("CLI".to_owned()), cli_thread_handle));
-    cleanup(stream_thread_handles);
+    cleanup(cli_thread_handle, connections);
 }
