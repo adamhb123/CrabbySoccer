@@ -1,3 +1,5 @@
+use std::{fmt::Display, io::Write};
+
 #[allow(dead_code)]
 pub fn format_vec<T: ToString>(fmt_str: &str, args: &[T]) -> String {
     let args: Vec<String> = args.iter().map(|e| e.to_string()).collect();
@@ -9,6 +11,13 @@ pub fn format_vec<T: ToString>(fmt_str: &str, args: &[T]) -> String {
         fmt_str = fmt_str.replacen("{}", arg.as_str(), 1);
     }
     fmt_str
+}
+
+pub fn println_then_show_input_indicator<T: Display>(val: T) {
+    println!("\r{}", val);
+    std::io::stdout().flush().unwrap();
+    print!("$ ");
+    std::io::stdout().flush().unwrap();
 }
 
 #[derive(Copy, Clone)]

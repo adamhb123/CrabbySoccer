@@ -1,14 +1,23 @@
 use crate::{
-    common::{self, InputAction},
+    common::{self, println_then_show_input_indicator, InputAction},
     requests,
 };
 use queue::Queue;
-use std::io::{self, Read, Write};
-use std::net::TcpStream;
-use std::sync::atomic::{AtomicBool, Ordering};
-use std::sync::{Arc, Mutex};
 use std::thread;
+use std::{
+    borrow::Borrow,
+    io::{self, Read, Write},
+};
 use std::{collections::HashMap, io::ErrorKind};
+use std::{
+    io::BufRead,
+    sync::atomic::{AtomicBool, Ordering},
+};
+use std::{io::BufReader, net::TcpStream};
+use std::{
+    sync::{Arc, Mutex},
+    time::Duration,
+};
 
 const SERVER_ADDR: &str = "127.0.0.1:7878";
 const CONNECT_INIT_ERROR_TIMEOUT_MS: u64 = 1000;
@@ -33,15 +42,12 @@ fn print_help() {
 fn parse_input<'a>(buf: &'a str, shutdown_trigger: &'a Arc<AtomicBool>) -> Result<String, &'a str> {
     let mut argsplit: Vec<String> = buf.split(' ').map(|e| e.to_owned()).collect();
     // Merge double-quote strings into single args
-    println!("ARGSPLIT before double quote parse");
-    println!("{:?}", argsplit);
     let double_quote_args: Vec<(usize, String)> = argsplit
         .iter()
         .cloned()
         .enumerate()
         .filter(|(_, a)| a.contains('\"') && !a.ends_with('\"'))
         .collect();
-    println!("DQA {:?}", double_quote_args);
     double_quote_args.iter().for_each(|(i, _)| {
         let idx = *i;
         let mut join_vec = vec![];
@@ -52,11 +58,8 @@ fn parse_input<'a>(buf: &'a str, shutdown_trigger: &'a Arc<AtomicBool>) -> Resul
                 break;
             }
         }
-        println!("join_vec {:?}", join_vec);
         argsplit.insert(idx, join_vec.join(" "));
     });
-    println!("ARGSPLIT after double quote parse");
-    println!("{:?}", argsplit);
 
     // Check for CLI input actions
     if let Some(action) = common::parse_input_action(&argsplit) {
@@ -78,7 +81,6 @@ fn parse_input<'a>(buf: &'a str, shutdown_trigger: &'a Arc<AtomicBool>) -> Resul
     // Parse and verify query parameters and associated values
     while !argsplit.is_empty() {
         let mut query_kv_split: Vec<String> = argsplit.pop().unwrap().split('=').map(|e| e.to_owned()).collect();
-        println!("Query_kv_split: {:?}", query_kv_split);
         if query_kv_split.len() != 2 {
             return Err("Malformed input (couldn't parse query parameter-value pair)");
         }
@@ -86,7 +88,6 @@ fn parse_input<'a>(buf: &'a str, shutdown_trigger: &'a Arc<AtomicBool>) -> Resul
         let param = query_kv_split.pop().unwrap();
         query_pv_map.insert(param, vals);
     }
-    println!("Query PV Map parse_args: {:?}", query_pv_map);
     endpoint.query_pv_map = query_pv_map;
     Ok(endpoint.get_request_string())
 }
@@ -102,7 +103,7 @@ fn try_connect() -> TcpStream {
                     Ok(addr) => addr.to_string(),
                     Err(_) => "[ERROR] UNABLE TO RETREIVE SERVER ADDRESS".to_owned(),
                 };
-                println!("Connection established with {}", peer_addr);
+                println_then_show_input_indicator(format!("Connection established with {}", peer_addr));
                 s
             }
             Err(e) => {
@@ -138,7 +139,8 @@ fn handle_stream(
     shutdown_trigger: Arc<AtomicBool>,
 ) {
     stream.set_nonblocking(true).expect("Failed to set stream nonblocking");
-    let mut receive_buf: String = String::new();
+    let mut receive_buf: Vec<u8> = vec![];
+    let mut buf_reader = BufReader::new(&stream);
     loop {
         if shutdown_trigger.load(Ordering::Relaxed) {
             break;
@@ -149,7 +151,7 @@ fn handle_stream(
             let mut send_q_locked = send_queue.lock().unwrap();
             while !send_q_locked.is_empty() {
                 if let Some(request_bytes) = send_q_locked.dequeue() {
-                    stream.write_all(request_bytes.as_bytes()).unwrap();
+                    (&stream).write_all(request_bytes.as_bytes()).unwrap();
                 }
             }
         }
@@ -160,14 +162,16 @@ fn handle_stream(
         {
             receive_buf.clear();
             let mut receive_q_locked = receive_queue.lock().unwrap();
-            match stream.read_to_string(&mut receive_buf) {
+            match buf_reader.read_until(requests::REQUEST_TERMINATOR, &mut receive_buf) {
                 Ok(len) => {
                     if len == 0 {
                         println!("Detected stream dropped!");
                         shutdown_trigger.store(true, Ordering::Relaxed);
                         return;
                     }
-                    receive_q_locked.queue(receive_buf.clone()).unwrap();
+                    receive_q_locked
+                        .queue(String::from_utf8(receive_buf.clone()).unwrap())
+                        .unwrap();
                 }
                 Err(ref e) if e.kind() == ErrorKind::WouldBlock => {
                     if shutdown_trigger.load(Ordering::Relaxed) {
@@ -183,7 +187,11 @@ fn handle_stream(
 pub fn run() {
     _assertion_checks();
     let shutdown_trigger = Arc::new(AtomicBool::new(false));
-    let (ctrl_c_shutdown_trigger, stream_shutdown_trigger) = (shutdown_trigger.clone(), shutdown_trigger.clone());
+    let (ctrl_c_shutdown_trigger, stream_shutdown_trigger, receive_thread_shutdown_trigger) = (
+        shutdown_trigger.clone(),
+        shutdown_trigger.clone(),
+        shutdown_trigger.clone(),
+    );
     let send_queue: Arc<Mutex<Queue<String>>> = Arc::new(Mutex::new(Queue::new()));
     let send_queue_stream_handler: Arc<Mutex<Queue<String>>> = send_queue.clone();
     let receive_queue: Arc<Mutex<Queue<String>>> = Arc::new(Mutex::new(Queue::new()));
@@ -198,6 +206,21 @@ pub fn run() {
     })
     .expect("Error setting Ctrl-C handler");
 
+    // Setup receive-from-server thread
+    let receive_thread_handle = thread::spawn(move || loop {
+        if let Ok(mut receive_q_locked) = receive_queue.lock() {
+            while !receive_q_locked.is_empty() {
+                println_then_show_input_indicator(format!(
+                    "[SERVER RESPONSE]\n{}",
+                    receive_q_locked.dequeue().unwrap()
+                ));
+            }
+        }
+        if receive_thread_shutdown_trigger.load(Ordering::Relaxed) {
+            break;
+        }
+        thread::sleep(Duration::from_millis(50));
+    });
     // Setup stream handler
     let stream_handler = thread::spawn(|| {
         handle_stream(
@@ -229,13 +252,8 @@ pub fn run() {
             };
             send_q_locked.queue(request_string).unwrap();
         }
-        if let Ok(mut receive_q_locked) = receive_queue.lock() {
-            println!("Checking receive queue...");
-            while !receive_q_locked.is_empty() {
-                println!("[SERVER RESPONSE]\n{}", receive_q_locked.dequeue().unwrap());
-            }
-        }
     }
     println!("Cleaning up stream handler");
+    receive_thread_handle.join().unwrap();
     stream_handler.join().unwrap();
 }

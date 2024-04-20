@@ -1,5 +1,5 @@
 use crate::{
-    common::{self, InputAction},
+    common::{self, println_then_show_input_indicator, InputAction},
     database,
     requests::{self, Endpoint, QueryPVMap},
 };
@@ -49,6 +49,7 @@ impl Connection {
             loop {
                 if self._shutdown_trigger.load(Ordering::Relaxed) {
                     println!("Dropping connection: {}", self.name);
+                    self.stream.as_ref().unwrap().write_all(&[]).unwrap(); // Send 0-len to notify other end of drop
                     break;
                 }
                 buf.clear();
@@ -81,7 +82,7 @@ impl Connection {
                     Some(rs) => rs,
                     None => "Failed to parse OR no response required".to_owned(),
                 };
-                println!("RESPONSE:\n{}", response_string);
+                println_then_show_input_indicator(format!("RESPONSE:\n{}", response_string));
                 self.stream
                     .as_ref()
                     .unwrap()
@@ -144,10 +145,15 @@ fn parse_request(request: Vec<String>) -> Option<Endpoint> {
 
 #[allow(clippy::manual_map)]
 fn get_response_string(request: &Endpoint, db: &database::DB) -> Option<String> {
+    let mut response_string: Option<String> = None;
     if request.uri == "get-all-players" {
         // optional params: name
-        return Some(if let Some(name) = request.query_pv_map.get("name") {
-            let name = if name.len() == 1 { Some(name[0].clone()) } else { None };
+        response_string = Some(if let Some(name) = request.query_pv_map.get("name") {
+            let name = if name.len() == 1 {
+                Some(name[0].clone().replace('+', " "))
+            } else {
+                None
+            };
             db.get_all_players(name).unwrap()
         } else {
             db.get_all_players(None).unwrap()
@@ -170,9 +176,16 @@ fn get_response_string(request: &Endpoint, db: &database::DB) -> Option<String> 
         );
         let player = db.get_player(player_id_arg, statistics_arg).unwrap();
         println!("get_player result: \n{}", player);
-        return Some(player);
+        response_string = Some(player);
     }
-    None
+    if response_string.is_some() {
+        response_string.map(|mut rs| {
+            rs.push(char::from(requests::REQUEST_TERMINATOR));
+            rs
+        })
+    } else {
+        None
+    }
 }
 
 fn cleanup(cli_thread_handle: JoinHandle<()>, connections: Arc<RwLock<Vec<Connection>>>) {
@@ -246,7 +259,7 @@ pub fn run(init_db: Option<bool>) {
         match stream {
             Ok(stream) => {
                 let conn = Connection::new(stream, Some(shutdown_trigger.clone()));
-                println!("Incoming connection from: {}", conn.name);
+                println_then_show_input_indicator(format!("Incoming connection from: {}", conn.name));
                 connections.write().unwrap().push(conn.start_thread());
             }
             Err(ref e) if e.kind() == ErrorKind::WouldBlock => {
