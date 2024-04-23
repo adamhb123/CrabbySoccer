@@ -3,11 +3,8 @@ use crate::{
     requests,
 };
 use queue::Queue;
+use std::io::{self, Write};
 use std::thread;
-use std::{
-    borrow::Borrow,
-    io::{self, Read, Write},
-};
 use std::{collections::HashMap, io::ErrorKind};
 use std::{
     io::BufRead,
@@ -133,7 +130,7 @@ fn _assertion_checks() {
 }
 
 fn handle_stream(
-    mut stream: TcpStream,
+    stream: TcpStream,
     send_queue: Arc<Mutex<Queue<String>>>,
     receive_queue: Arc<Mutex<Queue<String>>>,
     shutdown_trigger: Arc<AtomicBool>,
