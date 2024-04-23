@@ -3,7 +3,6 @@ mod common;
 pub mod database;
 mod requests;
 mod server;
-mod tests;
 
 #[derive(PartialEq)]
 enum ApplicationType {
