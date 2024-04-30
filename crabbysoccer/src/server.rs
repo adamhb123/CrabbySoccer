@@ -16,6 +16,22 @@ use std::{
     time::Duration,
 };
 
+const _HELP_MSG: &str = "
+ ----------------------------------------------------------------------
+| CrabbySoccer Server CLI                                              |
+ ----------------------------------------------------------------------
+[USAGE]
+    $ <COMMAND>
+    Available COMMANDs:
+        quit, q - shutdown server
+        help, h - print help
+        list-connections, lc - list clients
+";
+
+fn print_help() {
+    println!("{_HELP_MSG}");
+}
+
 #[derive(Debug)]
 struct Connection {
     name: String,
@@ -55,20 +71,18 @@ impl Connection {
                 buf.clear();
                 // Below should be converted to a non-blocking read in order to avoid hanging on server quit
                 match buf_reader.read_until(requests::REQUEST_TERMINATOR, &mut buf) {
-                    Ok(len) => {
-                        println!("BUFREAD LEN: {}", len);
-                        if len == 0 {
-                            println!("Connection {} dropped!", self.name);
-                            break;
-                        }
+                    Ok(0) => {
+                        println!("Connection {} dropped!", self.name);
+                        break;
                     }
-                    Err(_) => todo!(),
+                    Ok(_) => (),
+                    Err(_) => (),
                 }
                 let http_request: Vec<String> = buf
                     .lines()
                     .take_while(|line| {
                         let line = line.as_ref().unwrap();
-                        println!("{} is empty? {}", line, line.is_empty());
+                        // println!("{} is empty? {}", line, line.is_empty());
                         !line.is_empty()
                     })
                     .map(Result::unwrap)
@@ -128,7 +142,7 @@ fn parse_request(request: Vec<String>) -> Option<Endpoint> {
         Some(split) => split,
         None => (uri.as_str(), ""),
     };
-    println!("Parsed uri: {}", uri);
+    // println!("Parsed uri: {}", uri);
     let mut query_pv_map: QueryPVMap = HashMap::new();
     for qp_str in query_param_str.split('&').collect::<Vec<&str>>() {
         if qp_str.is_empty() {
@@ -139,7 +153,7 @@ fn parse_request(request: Vec<String>) -> Option<Endpoint> {
         query_pv_map.insert(qp.to_owned(), qvals);
     }
     let endpoint = Endpoint::new(uri, query_pv_map);
-    println!("Parsed endpoint: {:#?}", endpoint);
+    // println!("Parsed endpoint: {:#?}", endpoint);
     Some(endpoint)
 }
 
@@ -175,7 +189,7 @@ fn get_response_string(request: &Endpoint, db: &database::DB) -> Option<String> 
             },
         );
         let player = db.get_player(player_id_arg, statistics_arg).unwrap();
-        println!("get_player result: \n{}", player);
+        // println!("get_player result: \n{}", player);
         response_string = Some(player);
     }
     if response_string.is_some() {
@@ -219,6 +233,7 @@ fn run_cli(shutdown_trigger: Arc<AtomicBool>, stream_handles: Arc<RwLock<Vec<Con
         if let Some(action) = parse_input(buf) {
             match action {
                 InputAction::Quit => shutdown_trigger.store(true, Ordering::Relaxed),
+                InputAction::Help => print_help(),
                 InputAction::ListConnections => {
                     println!("Connections: {:#?}", stream_handles.read().unwrap());
                 }

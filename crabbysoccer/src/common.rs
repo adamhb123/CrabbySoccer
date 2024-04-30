@@ -23,12 +23,14 @@ pub fn println_then_show_input_indicator<T: Display>(val: T) {
 #[derive(Copy, Clone)]
 pub enum InputAction {
     Quit,
+    Help,
     ListConnections,
 }
 
-pub const INPUT_ACTION_PARSE_DEFS: [((&str, &str), InputAction); 2] = [
+pub const INPUT_ACTION_PARSE_DEFS: [((&str, &str), InputAction); 3] = [
     // Format: ((INPUT_PATTERN, INPUT_PATTERN_SHORTHAND), InputAction::{})
     (("quit", "q"), InputAction::Quit),
+    (("help", "h"), InputAction::Help),
     (("list-connections", "lc"), InputAction::ListConnections),
 ];
 

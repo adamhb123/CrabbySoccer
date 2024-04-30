@@ -37,13 +37,13 @@ impl Endpoint {
         if self.query_pv_map.values().len() == 0 {
             return Ok(format!("/{}", self.uri));
         }
-        println!("get_valued_uri query_pv_map: {:?}", self.query_pv_map);
+        // println!("get_valued_uri query_pv_map: {:?}", self.query_pv_map);
         let mut formatted = format!("/{}?", &self.uri);
         for (p, vset) in self.query_pv_map.iter() {
-            println!("VSET: {:?}", vset);
+            // println!("VSET: {:?}", vset);
             if !vset.is_empty() {
                 let vals = vset.join(",");
-                println!("Values: {}", vals);
+                // println!("Values: {}", vals);
                 formatted.push_str(format!("{p}={vals}&").as_str());
             }
         }

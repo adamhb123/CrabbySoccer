@@ -28,7 +28,7 @@ const _HELP_MSG: &str = "
 [USAGE]
     $ <COMMAND> <PARAMETER_1>=<ARG_1>,<ARG_2>,...,<ARG_N> <PARAMETER_2>=<VALUE_1>,<VALUE_2>,...,<VALUE_N>
     e.g.:
-        $ get-all-players name=Joe\\ Smith
+        $ get-all-players name=\"Smith\"
         $ get-player player_id=12345 statistics=goals,assists,shots,saves
 ";
 
@@ -65,6 +65,7 @@ fn parse_input<'a>(buf: &'a str, shutdown_trigger: &'a Arc<AtomicBool>) -> Resul
                 shutdown_trigger.store(true, Ordering::Relaxed);
                 return Err("Shutdown requested");
             }
+            InputAction::Help => print_help(),
             InputAction::ListConnections => (),
         }
     }

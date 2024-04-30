@@ -37,8 +37,7 @@ const CREATE_TABLE_QUERIES: [&str; 3] = [
         age INTEGER NOT NULL);",
     // statistics
     "CREATE TABLE statistics (
-        id INTEGER PRIMARY KEY AUTOINCREMENT,
-        player_id INTEGER,
+        player_id INTEGER PRIMARY KEY,
         appearances INTEGER NOT NULL,
         wins INTEGER NOT NULL,
         losses INTEGER NOT NULL,
