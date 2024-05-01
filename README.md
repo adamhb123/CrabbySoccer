@@ -4,6 +4,9 @@ Databases Project
 ## soccer.csv
 This file was downloaded from [this kaggle repository](https://www.kaggle.com/code/desalegngeb/english-premier-league-players-statistics/input) on 03/20/24. The original file name was "dataset - 2020-09-24.csv".
 
+## ER Diagram
+See the ER diagram [here (dbdiagram.io)](https://dbdiagram.io/d/663116655b24a634d0311568)
+
 ### Translation
 The csv is translated into the db schema as follows, by table:
 
@@ -144,10 +147,10 @@ The DB Schema is as follows, by table:
 | offsides              | INTEGER      | NOT NULL    |
 
 <b>position</b>
-| attribute             | type         | constraints |
-|-----------------------|--------------|-------------|
-| player_id             | INTEGER      | PRIMARY KEY; FOREIGN KEY |
-| name                  | VARCHAR(10)  | PRIMARY KEY |
+| attribute | type        | constraints              |
+|-----------|-------------|--------------------------|
+| player_id | INTEGER     | PRIMARY KEY; FOREIGN KEY |
+| name      | VARCHAR(10) | PRIMARY KEY              |
 * player_id and name are used in conjunction as the PRIMARY KEY of the position table
 * Note: Conventions for position 'name' are followed as per the borrowed database. I.e.:
     * Forward
